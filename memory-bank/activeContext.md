@@ -70,6 +70,7 @@
 
 ## Next steps
 - Run full repository validation (all tests + lint/type gates) and resolve any broader baseline debt outside targeted scope.
+- Kick-off UI modernization initiative: extract CSS/JS into static assets, introduce Vite build tooling, progressive UX improvements (spinner, live streaming), rich markdown/chart rendering, accessibility conformance, dark-mode support, and front-end automation tests (Playwright, Lighthouse CI).
 - Decide whether to enforce repo-wide Ruff clean-up now or scope CI lint target to critical modules until backlog cleanup is done.
 - Consider richer forecasting candidates (e.g., damped trend/ARIMA family) and expose explicit selection strategy in API docs.
 - Consider promoting load tests into stricter SLI/SLO gates as baseline stabilizes.

@@ -67,6 +67,7 @@
 
 ## What remains
 - Repo-wide Ruff baseline is not yet clean; new CI lint gate may fail unless scope is narrowed or legacy lint backlog is remediated.
+- UI modernization backlog: extract CSS/JS into static assets, adopt Vite build pipeline, add progressive UX (spinner, streaming), rich markdown/chart rendering, ensure accessibility & dark-mode, and add front-end automation tests (Playwright, Lighthouse CI).
 - Optional next step: add additional forecasting candidates beyond current Holt linear / Holt-Winters selection baseline.
 - Full-suite validation beyond targeted regression command still recommended before release cut.
 - Optional follow-up: add a dedicated docs index/changelog page to track future documentation migrations and ownership.
