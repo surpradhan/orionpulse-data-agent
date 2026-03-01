@@ -15,7 +15,7 @@ __pycache__/
 build/
 dist/
 coverage/
-tests/
+test/
 
 # Runtime/generated artifacts (keep repo clean + privacy-safe)
 artifacts/agent-traces/
