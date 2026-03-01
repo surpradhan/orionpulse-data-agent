@@ -1,0 +1,20 @@
+{
+  "net_revenue_trend": {
+    "chart": "line",
+    "dataset": "sales_monthly",
+    "x": "period",
+    "y": "net_revenue"
+  },
+  "region_comparison": {
+    "chart": "bar",
+    "dataset": "region_performance",
+    "x": "region_name",
+    "y": "net_revenue"
+  },
+  "margin_rank": {
+    "chart": "bar",
+    "dataset": "product_margin",
+    "x": "product_name",
+    "y": "margin_pct"
+  }
+}

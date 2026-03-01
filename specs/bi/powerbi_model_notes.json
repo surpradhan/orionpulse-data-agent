@@ -1,0 +1,8 @@
+{
+  "measures": [
+    "Net Revenue = SUM(fact_sales[net_revenue])",
+    "Margin = SUM(fact_sales[margin])",
+    "Margin % = DIVIDE([Margin],[Net Revenue])"
+  ],
+  "relationships": "Use relationship_map.json"
+}

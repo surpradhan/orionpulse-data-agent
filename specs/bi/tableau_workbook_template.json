@@ -1,0 +1,12 @@
+{
+  "recommended_data_sources": [
+    "sales_monthly.csv",
+    "region_performance.csv",
+    "product_margin.csv"
+  ],
+  "worksheet_templates": [
+    "Revenue Trend",
+    "Region Performance",
+    "Product Margin Rank"
+  ]
+}

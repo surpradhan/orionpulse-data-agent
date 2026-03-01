@@ -1,0 +1,25 @@
+{
+  "generated_at": "2026-03-01T08:25:49.077632+00:00",
+  "kpis": [
+    {
+      "name": "net_revenue",
+      "formula": "SUM(net_revenue)",
+      "format": "currency"
+    },
+    {
+      "name": "margin",
+      "formula": "SUM(margin)",
+      "format": "currency"
+    },
+    {
+      "name": "margin_pct",
+      "formula": "SUM(margin)/SUM(net_revenue)",
+      "format": "percentage"
+    },
+    {
+      "name": "asp",
+      "formula": "SUM(net_revenue)/SUM(units_sold)",
+      "format": "currency"
+    }
+  ]
+}

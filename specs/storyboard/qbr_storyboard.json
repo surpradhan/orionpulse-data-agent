@@ -1,0 +1,11 @@
+{
+  "goal": "Quarterly business review",
+  "audience": "exec",
+  "period": "latest_quarter",
+  "sections": [
+    {"name": "Context", "prompt": "Summarize top-line revenue and margin trend."},
+    {"name": "Insights", "prompt": "Highlight key drivers by region/product and anomalies."},
+    {"name": "Prediction", "prompt": "Provide next-period forecast with assumptions."},
+    {"name": "Actions", "prompt": "Recommend top 3 actions with expected business impact."}
+  ]
+}

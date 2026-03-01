@@ -1,0 +1,14 @@
+{
+  "name": "exec_overview",
+  "filters": {
+    "date_grain": "month",
+    "region": "ALL",
+    "category": "ALL"
+  },
+  "widgets": [
+    {"id": "kpi_revenue", "type": "kpi", "metric": "net_revenue", "title": "Net Revenue"},
+    {"id": "kpi_margin_pct", "type": "kpi", "metric": "margin_pct", "title": "Margin %"},
+    {"id": "trend_revenue", "type": "line", "x": "period", "y": "net_revenue", "dataset": "vw_monthly_sales"},
+    {"id": "region_perf", "type": "bar", "x": "region_name", "y": "net_revenue", "dataset": "vw_region_performance"}
+  ]
+}

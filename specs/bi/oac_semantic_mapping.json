@@ -1,0 +1,12 @@
+{
+  "subject_areas": [
+    "Sales Performance",
+    "Regional Analysis",
+    "Product Profitability"
+  ],
+  "dataset_contracts": [
+    "sales_monthly",
+    "region_performance",
+    "product_margin"
+  ]
+}

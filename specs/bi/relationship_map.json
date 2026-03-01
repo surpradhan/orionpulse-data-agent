@@ -1,0 +1,20 @@
+{
+  "entities": [
+    "fact_sales",
+    "dim_product",
+    "dim_region"
+  ],
+  "joins": [
+    {
+      "left": "fact_sales.product_id",
+      "right": "dim_product.product_id",
+      "type": "many_to_one"
+    },
+    {
+      "left": "fact_sales.region_id",
+      "right": "dim_region.region_id",
+      "type": "many_to_one"
+    }
+  ],
+  "grain": "transaction"
+}
