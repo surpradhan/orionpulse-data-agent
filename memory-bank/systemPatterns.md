@@ -12,6 +12,7 @@
 - Data access pattern:
   - SQL policy module centralizes statement validation, allowlisting, and parser-backed checks.
   - MCP tools call vetted query paths with readonly constraints.
+  - MCP response contract remains raw tool-shaped payloads (no HTTP-style envelope), with compatibility preserved via versioned-tool strategy for future contract evolution.
 
 - Analytics pattern:
   - Forecast API returns both point estimates and interval bounds.

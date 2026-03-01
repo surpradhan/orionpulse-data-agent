@@ -1,4 +1,10 @@
 from __future__ import annotations
+"""Agent orchestration layer for OrionPulse.
+
+This module provides deterministic and optional LLM-orchestrated answering flows,
+tool execution routing, lightweight short-term memory persistence, and trace
+artifact emission for debugging/operations.
+"""
 
 import json
 from dataclasses import dataclass
@@ -6,13 +12,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-import httpx
-
 from .analytics import anomaly_detection, forecast_metric, kpi_summary
+from .llm_client import llm_chat, llm_enabled
+from .memory_store import load_memory, save_memory
+from .planner_contracts import validate_critique, validate_planner_plan, validate_synthesis
 from .config import settings
 from .db import query_df
 from .specs import dashboard_spec, storyboard_spec
-from .bi_exports import export_bi_pack
+from .analytics_exports import export_analytics_pack
+from .tool_registry import build_tool_registry
 from .visualization import generate_chart, generate_insight_pack
 
 
@@ -21,26 +29,17 @@ MEMORY_FILE = Path("data/agent_memory.json")
 
 
 def _load_skills_context() -> dict[str, str]:
+    """Load markdown skill files into a name->content mapping.
+
+    Returns:
+        Dictionary keyed by skill filename stem.
+    """
     context: dict[str, str] = {}
     if not SKILLS_DIR.exists():
         return context
     for p in SKILLS_DIR.glob("*.md"):
         context[p.stem] = p.read_text(encoding="utf-8")
     return context
-
-
-def _load_memory() -> list[dict[str, Any]]:
-    if not MEMORY_FILE.exists():
-        return []
-    try:
-        return json.loads(MEMORY_FILE.read_text(encoding="utf-8"))
-    except Exception:
-        return []
-
-
-def _save_memory(items: list[dict[str, Any]]) -> None:
-    MEMORY_FILE.parent.mkdir(parents=True, exist_ok=True)
-    MEMORY_FILE.write_text(json.dumps(items[-20:], indent=2), encoding="utf-8")
 
 
 @dataclass
@@ -50,6 +49,8 @@ class AgentResponse:
     data: Any
     reasoning_summary: list[str]
     followups: list[str]
+    execution_mode: str
+    fallback_reason: str | None = None
 
 
 class OrionAgent:
@@ -59,9 +60,11 @@ class OrionAgent:
         self.skills = _load_skills_context()
 
     def _trace_enabled(self) -> bool:
+        """Return whether JSON trace artifacts should be written."""
         return settings.debug_trace
 
     def _write_trace(self, payload: dict[str, Any]) -> None:
+        """Write a timestamped trace artifact when tracing is enabled."""
         if not self._trace_enabled():
             return
         out_dir = Path(settings.trace_path)
@@ -70,69 +73,31 @@ class OrionAgent:
         (out_dir / f"trace_{ts}.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
     def _llm_enabled(self) -> bool:
-        return bool(settings.llm_api_key.strip())
+        """Return True if an LLM API key is configured."""
+        return llm_enabled()
 
     def _llm_chat(self, system_prompt: str, user_prompt: str) -> str:
-        if not self._llm_enabled():
-            raise RuntimeError("LLM not configured")
-
-        headers = {
-            "Authorization": f"Bearer {settings.llm_api_key}",
-            "Content-Type": "application/json",
-        }
-        payload = {
-            "model": settings.llm_model,
-            "temperature": 0.1,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-        }
-        url = settings.llm_base_url.rstrip("/") + "/chat/completions"
-        with httpx.Client(timeout=30) as client:
-            r = client.post(url, headers=headers, json=payload)
-            r.raise_for_status()
-            data = r.json()
-        return data["choices"][0]["message"]["content"]
+        """Call the configured chat-completions endpoint and return model text."""
+        return llm_chat(system_prompt, user_prompt)
 
     @staticmethod
     def _validate_planner_plan(data: dict[str, Any]) -> dict[str, Any]:
-        required = {"thought", "final"}
-        missing = required - set(data.keys())
-        if missing:
-            raise ValueError(f"Planner JSON missing keys: {sorted(missing)}")
-        if not isinstance(data.get("final"), bool):
-            raise ValueError("Planner 'final' must be boolean")
-        if data.get("final"):
-            if not isinstance(data.get("final_answer", ""), str):
-                raise ValueError("Planner final_answer must be string when final=true")
-        else:
-            action = data.get("action")
-            if not isinstance(action, dict):
-                raise ValueError("Planner action must be object when final=false")
-            if not isinstance(action.get("tool"), str):
-                raise ValueError("Planner action.tool must be string")
-            if not isinstance(action.get("args", {}), dict):
-                raise ValueError("Planner action.args must be object")
-        if "followups" in data and not isinstance(data.get("followups"), list):
-            raise ValueError("Planner followups must be array")
-        return data
+        """Validate planner-step JSON contract.
+
+        Raises:
+            ValueError: If required structure/types are missing or invalid.
+        """
+        return validate_planner_plan(data)
 
     @staticmethod
     def _validate_critique(data: dict[str, Any]) -> dict[str, Any]:
-        if not isinstance(data.get("continue"), bool):
-            raise ValueError("Critique 'continue' must be boolean")
-        if not isinstance(data.get("reason", ""), str):
-            raise ValueError("Critique 'reason' must be string")
-        return data
+        """Validate critique-step JSON contract."""
+        return validate_critique(data)
 
     @staticmethod
     def _validate_synthesis(data: dict[str, Any]) -> dict[str, Any]:
-        if not isinstance(data.get("answer", ""), str):
-            raise ValueError("Synthesis 'answer' must be string")
-        if "followups" in data and not isinstance(data.get("followups"), list):
-            raise ValueError("Synthesis 'followups' must be array")
-        return data
+        """Validate synthesis-step JSON contract."""
+        return validate_synthesis(data)
 
     def _parse_llm_json(self, raw: str, schema_type: str) -> dict[str, Any]:
         """Parse + repair + validate LLM JSON output with bounded retries."""
@@ -170,55 +135,15 @@ class OrionAgent:
         raise ValueError(f"Failed to parse/validate {schema_type} JSON after retries: {last_error}")
 
     def _tool_registry(self) -> dict[str, Any]:
-        return {
-            "kpi_summary": lambda args: kpi_summary(
-                settings.db_path,
-                grain=str(args.get("grain", settings.default_grain)),
-                period_filter=args.get("period_filter"),
-            ),
-            "forecast": lambda args: forecast_metric(
-                settings.db_path,
-                metric=str(args.get("metric", "net_revenue")),
-                horizon=int(args.get("horizon", settings.default_forecast_horizon)),
-            ),
-            "anomaly": lambda args: anomaly_detection(
-                settings.db_path,
-                metric=str(args.get("metric", "net_revenue")),
-                threshold=float(args.get("threshold", 2.0)),
-            ),
-            "dashboard": lambda args: dashboard_spec(
-                template_name=str(args.get("template_name", "exec_overview")),
-                filters=args.get("filters") if isinstance(args.get("filters"), dict) else None,
-            ),
-            "storyboard": lambda args: storyboard_spec(
-                goal=str(args.get("goal", "Executive review")),
-                audience=str(args.get("audience", "exec")),
-                period=str(args.get("period", "latest_quarter")),
-            ),
-            "top_regions": lambda args: query_df(
-                settings.db_path,
-                "SELECT * FROM vw_region_performance ORDER BY net_revenue DESC LIMIT 5",
-            ).to_dict(orient="records"),
-            "top_products": lambda args: query_df(
-                settings.db_path,
-                "SELECT * FROM vw_product_margin_rank ORDER BY margin_pct DESC LIMIT 5",
-            ).to_dict(orient="records"),
-            "generate_chart": lambda args: generate_chart(
-                chart_type=str(args.get("chart_type", "kpi_trend")),
-                metric=str(args.get("metric", "net_revenue")),
-                horizon=int(args.get("horizon", settings.default_forecast_horizon)),
-                threshold=float(args.get("threshold", 2.0)),
-                fmt=str(args.get("fmt", "png")),
-            ),
-            "generate_insight_pack": lambda args: generate_insight_pack(
-                question=str(args.get("question", "")),
-                fmt=str(args.get("fmt", "png")),
-            ),
-            "export_bi_pack": lambda args: export_bi_pack(fmt=str(args.get("fmt", "csv"))),
-        }
+        """Return callable registry used by LLM planner actions."""
+        return build_tool_registry()
 
-    def _rule_based_answer(self, question: str) -> AgentResponse:
-        """Fallback path when no LLM key is configured."""
+    def _rule_based_answer(self, question: str, execution_mode: str = "deterministic") -> AgentResponse:
+        """Produce a deterministic answer using intent-driven routing.
+
+        This path is used for explicit deterministic mode and as safety fallback
+        when LLM orchestration is unavailable or fails.
+        """
         intent = self.classify_intent(question)
         reasoning = [
             f"Classified intent as '{intent}'",
@@ -253,9 +178,9 @@ class OrionAgent:
             data = generate_insight_pack(question)
             answer = "Generated visualization insight pack with saved chart artifacts."
             followups = ["Do you want SVG exports as well?", "Should I include anomaly and forecast charts?"]
-        elif "power bi" in question.lower() or "tableau" in question.lower() or "oracle analytics" in question.lower() or "bi export" in question.lower():
-            data = export_bi_pack(fmt="csv")
-            answer = "Generated BI export pack with canonical datasets and semantic mapping files."
+        elif "analytics export" in question.lower() or "semantic export" in question.lower() or "export pack" in question.lower():
+            data = export_analytics_pack(fmt="csv")
+            answer = "Generated Analytics Export pack with canonical datasets and semantic mapping files."
             followups = ["Should I also generate parquet exports?", "Need tool-specific starter templates refined further?"]
         else:
             data = {
@@ -266,9 +191,21 @@ class OrionAgent:
             followups = ["Try: 'forecast next 3 months revenue'", "Try: 'why did margin drop in APAC?'"]
 
         reasoning.append("Generated structured response with next-best follow-up questions")
-        return AgentResponse(intent=intent, answer=answer, data=data, reasoning_summary=reasoning, followups=followups)
+        return AgentResponse(
+            intent=intent,
+            answer=answer,
+            data=data,
+            reasoning_summary=reasoning,
+            followups=followups,
+            execution_mode=execution_mode,
+        )
 
     def _llm_orchestrated_answer(self, question: str) -> AgentResponse:
+        """Run planner/tool/critique/synthesis loop for dynamic reasoning.
+
+        The loop is bounded by configured max steps and guarded by strict JSON
+        schema validation with repair attempts.
+        """
         tools = self._tool_registry()
         tool_names = sorted(tools.keys())
         observations: list[dict[str, Any]] = []
@@ -311,6 +248,7 @@ class OrionAgent:
                     data={"observations": observations},
                     reasoning_summary=reasoning,
                     followups=plan.get("followups", []),
+                    execution_mode="llm_orchestrated",
                 )
 
             action = plan.get("action") or {}
@@ -383,9 +321,11 @@ class OrionAgent:
             data={"observations": observations},
             reasoning_summary=reasoning,
             followups=synth.get("followups", []),
+            execution_mode="llm_orchestrated",
         )
 
     def classify_intent(self, question: str) -> str:
+        """Classify user intent using lightweight keyword heuristics."""
         q = question.lower()
         if "forecast" in q or "predict" in q:
             return "forecast"
@@ -402,6 +342,7 @@ class OrionAgent:
         return "general"
 
     def _root_cause_pack(self) -> dict:
+        """Build a multi-source driver pack for root-cause style questions."""
         region = query_df(
             settings.db_path,
             "SELECT * FROM vw_region_performance ORDER BY net_revenue DESC LIMIT 5",
@@ -413,26 +354,56 @@ class OrionAgent:
         anomalies = anomaly_detection(settings.db_path)
         return {"region_drivers": region, "product_drivers": product, "anomalies": anomalies}
 
-    def answer(self, question: str) -> AgentResponse:
+    def answer(self, question: str, mode: str = "auto") -> AgentResponse:
+        """Main entrypoint for agent responses.
+
+        Args:
+            question: Natural-language user query.
+            mode: One of ``auto``, ``deterministic``, or ``llm``.
+
+        Returns:
+            AgentResponse with intent, answer, payload, follow-ups, and
+            execution provenance metadata.
+        """
         trace_session: dict[str, Any] = {
             "question": question,
             "llm_enabled": self._llm_enabled(),
+            "requested_mode": mode,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
+        normalized_mode = mode.lower().strip()
+        if normalized_mode not in {"auto", "deterministic", "llm"}:
+            normalized_mode = "auto"
+
+        llm_eligible = normalized_mode in {"auto", "llm"} and self._llm_enabled()
+
         try:
-            resp = self._llm_orchestrated_answer(question) if self._llm_enabled() else self._rule_based_answer(question)
-            trace_session["mode"] = "llm_orchestrated" if self._llm_enabled() else "rule_based"
+            if normalized_mode == "deterministic":
+                resp = self._rule_based_answer(question, execution_mode="deterministic")
+                trace_session["mode"] = "deterministic"
+            elif llm_eligible:
+                resp = self._llm_orchestrated_answer(question)
+                trace_session["mode"] = "llm_orchestrated"
+            else:
+                resp = self._rule_based_answer(question, execution_mode="deterministic")
+                trace_session["mode"] = "deterministic"
+                if normalized_mode == "llm" and not self._llm_enabled():
+                    resp.fallback_reason = "LLM mode requested but LLM is not configured"
         except Exception as exc:
             # Safety fallback to deterministic path
-            resp = self._rule_based_answer(question)
+            resp = self._rule_based_answer(question, execution_mode="fallback_rule_based")
+            resp.fallback_reason = str(exc)
             trace_session["mode"] = "fallback_rule_based"
             trace_session["fallback_reason"] = str(exc)
 
-        mem = _load_memory()
+        mem = load_memory(MEMORY_FILE)
         mem.append({"question": question, "intent": resp.intent, "answer": resp.answer})
-        _save_memory(mem)
+        save_memory(MEMORY_FILE, mem)
         trace_session["intent"] = resp.intent
         trace_session["answer"] = resp.answer
         trace_session["followups"] = resp.followups
+        trace_session["execution_mode"] = resp.execution_mode
+        if resp.fallback_reason:
+            trace_session["fallback_reason"] = resp.fallback_reason
         self._write_trace({"phase": "final", "session": trace_session})
         return resp

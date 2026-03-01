@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import matplotlib
 import matplotlib.pyplot as plt
 import seaborn as sns
 
@@ -15,6 +16,12 @@ from .db import query_df
 
 CHART_DIR = Path("artifacts/charts")
 MANIFEST = CHART_DIR / "manifest.json"
+
+
+def set_test_safe_matplotlib_backend() -> None:
+    backend = matplotlib.get_backend().lower()
+    if backend != "agg":
+        matplotlib.use("Agg", force=True)
 
 
 def _safe_slug(text: str) -> str:

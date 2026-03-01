@@ -9,12 +9,12 @@ from .config import settings
 from .db import query_df
 
 
-BI_DIR = Path("artifacts/bi_exports")
-SPECS_DIR = Path("specs/bi")
+ANALYTICS_EXPORTS_DIR = Path("artifacts/analytics_exports")
+SPECS_DIR = Path("specs/analytics_exports")
 
 
 def _ensure_dirs() -> None:
-    BI_DIR.mkdir(parents=True, exist_ok=True)
+    ANALYTICS_EXPORTS_DIR.mkdir(parents=True, exist_ok=True)
     SPECS_DIR.mkdir(parents=True, exist_ok=True)
 
 
@@ -33,7 +33,7 @@ def export_canonical_datasets(fmt: str = "csv") -> dict[str, Any]:
     outputs: dict[str, str] = {}
     for name, sql in datasets.items():
         df = query_df(settings.db_path, sql)
-        out = BI_DIR / f"{name}.{fmt}"
+        out = ANALYTICS_EXPORTS_DIR / f"{name}.{fmt}"
         if fmt == "csv":
             df.to_csv(out, index=False)
         else:
@@ -101,7 +101,7 @@ def build_semantic_packs() -> dict[str, str]:
     return outputs
 
 
-def export_bi_pack(fmt: str = "csv") -> dict[str, Any]:
+def export_analytics_pack(fmt: str = "csv") -> dict[str, Any]:
     data_files = export_canonical_datasets(fmt=fmt)
     semantic_files = build_semantic_packs()
     manifest = {
@@ -111,7 +111,7 @@ def export_bi_pack(fmt: str = "csv") -> dict[str, Any]:
         "semantic_packs": semantic_files,
     }
     _ensure_dirs()
-    manifest_path = BI_DIR / "manifest.json"
+    manifest_path = ANALYTICS_EXPORTS_DIR / "manifest.json"
     manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     manifest["manifest"] = str(manifest_path).replace("\\", "/")
     return manifest

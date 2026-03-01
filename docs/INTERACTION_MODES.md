@@ -1,27 +1,73 @@
 # User Interaction Modes
 
-## 1) MCP Chat (Primary)
+This document describes how OrionPulse is used across channels and how execution mode is controlled.
 
-User asks natural language questions in an MCP-compatible chat client.
+For engineering policy details, see `docs/ENGINEERING_EXECUTION_MODE_POLICY.md`.
 
-Examples:
+## 1) MCP Chat (integration-first)
 
+Primary use case for programmatic integrations through MCP tools.
+
+- MCP tool contracts are intentionally deterministic and tool-shaped.
+- Responses are raw tool payloads (not HTTP envelopes).
+- Best for stable, automatable data workflows.
+
+Example asks:
 - "Show Q4 net revenue and margin % by region"
 - "Why did APAC margin decline last month?"
 - "Forecast next 3 months net revenue"
 
-## 2) Structured Prompt Mode
+## 2) CLI mode (`scripts/ask_agent.py`)
 
-Use templates with explicit goal, scope, and output format for repeatability.
+Convenient local/operator interface for analytics and orchestration testing.
 
-## 3) CLI Mode
+Examples:
 
-`python scripts/ask_agent.py --question "forecast next months revenue" --format json`
+```bash
+python scripts/ask_agent.py --question "forecast next months revenue" --format json
+python scripts/ask_agent.py --question "why did margin drop" --mode auto --format json
+python scripts/ask_agent.py --question "show kpi summary" --mode deterministic --format json
+```
 
-## 4) Minimal Web UI
+Mode controls:
+- `--mode auto|deterministic|llm`
+- Default from `ORION_CLI_DEFAULT_MODE` (default `deterministic`)
 
-Launch with Uvicorn and use `/kpi` and `/forecast` endpoints.
+## 3) Web UI / HTTP API mode
 
-## Answer Format Guidelines
+Launch:
 
-Responses should include scope, formulas, assumptions, and recommended actions.
+```bash
+python -m uvicorn src.orion_sales_agent.webapp:app --reload
+```
+
+Default: `auto` via `ORION_WEB_DEFAULT_MODE`.
+
+Deterministic-only endpoints:
+- `/kpi`
+- `/forecast`
+- `/ask_with_analytics_exports`
+
+Auto/LLM-eligible endpoints:
+- `/chat`
+- `/ask`
+- `/ask_with_visuals`
+
+Versioned aliases also exist under `/v1/...`.
+
+## 4) Structured prompt mode (cross-channel technique)
+
+Use explicit templates for repeatable outputs:
+- Goal
+- Scope (time/region/product)
+- Desired output format (table, narrative, actions)
+
+See `docs/prompt_templates.md`.
+
+## Response guidance
+
+Answers should include:
+- Scope and filters used
+- Formula assumptions (especially KPI and forecast context)
+- Evidence/driver breakdown where applicable
+- Recommended actions and expected business effect

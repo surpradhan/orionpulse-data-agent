@@ -1,64 +1,68 @@
-# OrionPulse Data Agent (MCP + SQLite)
+# OrionPulse Data Agent (MCP + SQLite + FastAPI)
 
-End-to-end sales analytics agent with:
+OrionPulse is a sales analytics agent that combines deterministic data tooling with optional LLM orchestration.
 
-- 3-table sales model and synthetic data generation
-- MCP server tools for querying, KPI summaries, view creation, forecasting, anomalies
-- Skills markdown knowledge files for business context and KPI logic
-- SQL views and JSON dashboard/storyboard specs
-- 3 interaction modes: MCP chat client, CLI wrapper, minimal web UI
-- Agent orchestration layer: intent classification, multi-step tool routing, memory, and follow-up suggestions
+It supports:
+- Sales KPI analysis over a curated SQLite model
+- Forecasting and anomaly detection
+- Dashboard/storyboard spec generation
+- Analytics export package generation for BI tools
+- MCP tool access, CLI usage, and a web UI/API
 
-## Quick Start
+## Core capabilities
 
-1. Create virtual environment:
+- Data model: `dim_product`, `dim_region`, `fact_sales`
+- MCP tools: metadata, readonly SQL, KPI summary, forecast, anomaly, view creation (admin-gated), spec generation
+- Agent orchestration modes: deterministic, llm, auto (with safe fallback)
+- Web API: standardized envelope + execution provenance fields
+- Voice-enabled UI: browser speech-to-text and text-to-speech controls
+
+## Quick start
+
+1) Create and activate environment
 
 ```bash
 python -m venv .venv
-```
-
-2. Activate and install dependencies:
-
-```bash
 .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-3. Initialize database:
+2) Initialize data and views
 
 ```bash
 python data/init_db.py
-```
-
-4. Apply standard views:
-
-```bash
 python -c "from src.orion_sales_agent.views import apply_views; from src.orion_sales_agent.config import settings; apply_views(settings.db_path); print('views applied')"
 ```
 
-5. Run MCP server:
+3) Run services
 
 ```bash
 python mcp_server/server.py
+python -m uvicorn src.orion_sales_agent.webapp:app --reload
 ```
 
-6. Try CLI mode:
+4) Try CLI
 
 ```bash
 python scripts/ask_agent.py --question "forecast next months revenue" --format json
-```
-
-Generate visual analytics artifacts from CLI:
-
-```bash
+python scripts/ask_agent.py --question "why did margin drop" --mode auto --format json
 python scripts/ask_agent.py --question "show performance with charts" --with-charts --format json
+python scripts/ask_agent.py --question "prepare analytics exports" --with-analytics-exports --format json
 ```
 
-Agentic behavior now includes: intent detection, reasoning summary, contextual follow-up prompts, and short memory in `data/agent_memory.json`.
+## Interaction channels and mode policy
 
-### LLM Orchestration (Planner + Tool-Calling + Critique Loop)
+- MCP: deterministic contract behavior by default
+- Web/API: default `auto` (configurable via `ORION_WEB_DEFAULT_MODE`)
+- CLI: default `deterministic` (configurable via `ORION_CLI_DEFAULT_MODE`)
 
-To enable dynamic multi-hop analysis (instead of only rule-based routing), set:
+See:
+- `docs/ENGINEERING_EXECUTION_MODE_POLICY.md`
+- `docs/INTERACTION_MODES.md`
+
+## LLM orchestration (optional)
+
+Configure:
 
 ```bash
 ORION_LLM_API_KEY=your_key_here
@@ -67,33 +71,11 @@ ORION_LLM_MODEL=gpt-4o-mini
 ORION_LLM_MAX_STEPS=4
 ```
 
-When configured, the agent uses:
-- planner loop (decides next tool dynamically)
-- tool execution loop (kpi/forecast/anomaly/dashboard/storyboard/driver tools)
-- critique loop (decides whether more evidence is needed)
-- final synthesis step
+If unavailable or failing, the agent falls back to deterministic logic.
 
-If LLM is unavailable or fails, the agent safely falls back to deterministic orchestration.
+## API response contract
 
-7. Run minimal web UI:
-
-```bash
-python -m uvicorn src.orion_sales_agent.webapp:app --reload
-```
-
-Visit `http://127.0.0.1:8000`.
-
-Try: `http://127.0.0.1:8000/ask?q=why%20did%20margin%20drop`
-
-Visual endpoint:
-
-`http://127.0.0.1:8000/ask_with_visuals?q=show%20kpi%20trend&fmt=png`
-
-Generated charts are saved under `artifacts/charts/` and exposed via `/artifacts/charts/...`.
-
-### API Response Envelope
-
-Core JSON endpoints now return a standard envelope:
+Core JSON endpoints use:
 
 ```json
 {
@@ -101,54 +83,34 @@ Core JSON endpoints now return a standard envelope:
   "trace_id": "orion-...",
   "timestamp": "2026-...Z",
   "warnings": [],
-  "data": { }
+  "data": {}
 }
 ```
 
-This applies to `/chat`, `/kpi`, `/forecast`, `/ask`, `/ask_with_visuals`, and `/ask_with_bi_exports`.
+Also includes provenance:
+- `execution_mode`: `deterministic` | `llm_orchestrated` | `fallback_rule_based`
+- `fallback_reason` (optional)
 
-### Auth configuration
+Routes:
+- Primary: `/chat`, `/kpi`, `/forecast`, `/ask`, `/ask_with_visuals`, `/ask_with_analytics_exports`
+- Versioned aliases: `/v1/...` for the same endpoints
 
-Auth behavior is controlled by:
+## Auth and security posture
 
-- `ORION_ENV` (default: `dev`)
-- `ORION_AUTH_REQUIRED` (defaults to `true` when `ORION_ENV != dev`, else `false`)
+Key variables:
+- `ORION_ENV`
+- `ORION_AUTH_REQUIRED`
+- `ORION_AUTH_PROFILE` (`DEV_OPEN`, `DEV_GUARDED`, `PROD_STRICT`)
 - `ORION_ANALYST_TOKEN`
 - `ORION_ADMIN_TOKEN`
 
-When auth is required and tokens are missing, the app fails fast at startup.
+When auth is required and tokens are missing, startup fails fast.
 
-## Phase 2 BI Exports (Power BI / Tableau / OAC)
-
-Generate BI-ready datasets + semantic packs:
-
-```bash
-python scripts/ask_agent.py --question "prepare bi export for power bi" --with-bi-exports --format json
-```
-
-API endpoint:
-
-`http://127.0.0.1:8000/ask_with_bi_exports?q=prepare%20bi%20exports&fmt=csv`
-
-See `docs/BI_EXPORT_GUIDE.md` for full details.
-
-## Voice-enabled Chat UI
-
-Open:
-
-- `http://127.0.0.1:8000/`
-
-Voice controls in UI:
-
-- 🎤 Start/Stop Listening (speech-to-text)
-- Auto speak answer (text-to-speech)
-- Voice selector + speech rate slider
-
-Environment scaffolding:
-
-- `ORION_VOICE_PROVIDER=browser`
-- `ORION_VOICE_LANG=en-US`
-- `ORION_TTS_VOICE=`
+Safety highlights:
+- SQL constrained to single-statement readonly `SELECT`/`WITH`
+- Allowlist validation for queryable objects
+- SQL row limits bounded by config
+- Admin-only operations gated and policy-checked
 
 ## Validation
 
@@ -157,20 +119,21 @@ python scripts/preflight.py
 pytest
 ```
 
-## Security / Safety Notes
+## Documentation map
 
-- `run_sql` accepts only single-statement `SELECT`/`WITH` queries.
-- Queryable objects are restricted to an internal allowlist of approved tables/views.
-- SQL limit is capped by `ORION_MAX_SQL_LIMIT`.
-- `create_sql_view` is gated and requires `ORION_ADMIN_MODE=true` (and is blocked in readonly mode unless admin mode is enabled).
-- Forecast/anomaly tools enforce input ranges and return graceful warning payloads for empty/insufficient data.
+- Architecture and strategy: `docs/MASTER_PLAN.md`
+- Data model/KPIs: `docs/DATA_MODEL_AND_KPIS.md`
+- Ops runbook: `docs/OPERATIONS_RUNBOOK.md`
+- Channel error semantics: `docs/CHANNEL_ERROR_CONTRACTS.md`
+- MCP response contract decision: `docs/MCP_RESPONSE_CONTRACT_DECISION.md`
+- Analytics exports: `docs/ANALYTICS_EXPORT_GUIDE.md`
 
-## Project Layout
+## Project layout
 
-- `data/`: seed + DB init
-- `src/orion_sales_agent/`: core package
-- `mcp_server/`: MCP server entrypoint
-- `skills/`: business knowledge files
-- `sql/`: schema and views
-- `specs/`: dashboard/storyboard JSON
-- `docs/`: full architecture and implementation plan docs
+- `src/orion_sales_agent/` core package
+- `mcp_server/` MCP server entrypoint
+- `data/` DB initialization and seed utilities
+- `sql/` schema and views
+- `skills/` business reasoning knowledge files
+- `specs/` generated dashboard/storyboard/analytics spec files
+- `docs/` architecture, policy, and operational guidance

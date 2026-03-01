@@ -1,13 +1,13 @@
-# OrionPulse Agent - Real-time UI Test Cases (Review Draft)
+# OrionPulse Agent - Real-time UI/API Test Cases
 
 ## Scope
 
-These test cases cover real-time validation of the minimal web UI and core API endpoints:
+These test cases cover real-time validation of the web UI and core API endpoints:
 
 - Home page render
 - KPI endpoint behavior
 - Forecast endpoint behavior
-- Error and safety behaviors for hardened logic
+- Auth, error, and safety behaviors for hardened logic
 - Evidence capture for each test (screenshots + response payload logs)
 
 ## Preconditions
@@ -36,37 +36,39 @@ python -m uvicorn src.orion_sales_agent.webapp:app --host 127.0.0.1 --port 8010
 
 ## Test Cases
 
-### AUTH-001: Unauthenticated access policy check (current-state)
-**Objective:** Validate whether app enforces authentication for UI routes.  
+### AUTH-001: Unauthenticated access policy check (profile-aware)
+**Objective:** Validate behavior by auth profile and token configuration.  
 **Steps:**
-1. Open `http://127.0.0.1:8010/` in a fresh browser session
-2. Open `http://127.0.0.1:8010/kpi`
-3. Open `http://127.0.0.1:8010/forecast`
+1. Start app with `ORION_AUTH_PROFILE=DEV_OPEN` and no tokens
+2. Open `http://127.0.0.1:8010/`, `/kpi`, `/forecast`
+3. Restart app with required auth (`DEV_GUARDED` or `PROD_STRICT`) and no token in request headers
+4. Re-run `/kpi` and `/forecast`
 
-**Expected (current implementation):**
-- Routes are accessible without login (HTTP 200)
+**Expected:**
+- `DEV_OPEN` (no required auth): routes may be reachable without token (HTTP 200)
+- guarded/strict modes: protected routes require token (401/403 when missing/invalid)
 
 **Security note:**
-- This is expected for current v1 (no auth module yet), and should be tracked as a hardening backlog item.
+- Auth behavior is intentionally environment/profile-driven.
 
 **Evidence to save:** screenshots of all 3 endpoints
 
 ---
 
 ### AUTH-002: Protected-route expectation test (future target)
-**Objective:** Define target behavior after auth is added.  
+**Objective:** Validate role-based route protection with configured tokens.  
 **Steps:**
 1. Access protected endpoint without token/session
 2. Access with invalid token/session
 3. Access with valid token/session
 
-**Expected (future):**
+**Expected:**
 - No token/session => HTTP 401/403
 - Invalid token/session => HTTP 401/403
 - Valid token/session => HTTP 200
 
 **Status:**
-- Not applicable in current build; included as planned security regression test.
+- Applicable in current build when auth is required/configured.
 
 ---
 
@@ -94,8 +96,9 @@ python -m uvicorn src.orion_sales_agent.webapp:app --host 127.0.0.1 --port 8010
 
 **Expected:**
 - HTTP 200
-- JSON array with objects containing: `period`, `net_revenue`, `margin`, `units_sold`, `asp`, `margin_pct`
-- Array length > 0
+- JSON envelope with `status`, `trace_id`, `timestamp`, `warnings`, `data`
+- `data` contains KPI records with fields including: `period`, `net_revenue`, `margin`, `units_sold`, `asp`, `margin_pct`
+- Result set length > 0
 
 **Evidence to save:** screenshot of response body
 
@@ -109,9 +112,11 @@ python -m uvicorn src.orion_sales_agent.webapp:app --host 127.0.0.1 --port 8010
 
 **Expected:**
 - HTTP 200
-- JSON object with keys: `metric`, `horizon`, `history`, `forecast`, `assumptions`
-- `horizon` equals configured default (3)
-- `forecast` list length = 3
+- JSON envelope with `status`, `trace_id`, `timestamp`, `warnings`, `data`
+- `data` includes `metric`, `horizon`, `history`, `forecast`, `assumptions`
+- `data.horizon` equals configured default (3)
+- `data.forecast` list length = 3
+- Optional additive diagnostics may be present in `data.diagnostics`
 
 **Evidence to save:** screenshot of response body
 
@@ -181,6 +186,6 @@ For each test, store:
 ## Pass/Fail Exit Criteria
 
 - All UI tests UI-001..UI-004 pass
-- AUTH-001 executed and documented for current state
+- AUTH-001 executed and documented for active auth profile
 - All security/validation tests API-SEC-001..API-VAL-002 pass
 - Evidence artifacts generated for each case

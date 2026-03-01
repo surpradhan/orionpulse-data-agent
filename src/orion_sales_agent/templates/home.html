@@ -1,0 +1,169 @@
+<html>
+  <head>
+    <title>OrionPulse Agent</title>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 0; background: #f6f8fb; }
+      .wrap { max-width: 920px; margin: 24px auto; padding: 0 16px; }
+      .card { background: #fff; border: 1px solid #e4e8f0; border-radius: 12px; padding: 16px; }
+      h2 { margin-top: 0; }
+      textarea { width: 100%; min-height: 90px; padding: 10px; border-radius: 8px; border: 1px solid #cdd5e1; }
+      .row { display: flex; gap: 12px; align-items: center; margin-top: 10px; flex-wrap: wrap; }
+      button { background: #1f6feb; color: #fff; border: 0; border-radius: 8px; padding: 9px 14px; cursor: pointer; }
+      button:disabled { opacity: 0.6; cursor: not-allowed; }
+      .out { white-space: pre-wrap; background: #0b1020; color: #d9e0ff; border-radius: 8px; padding: 12px; margin-top: 14px; max-height: 420px; overflow: auto; }
+      .muted { color: #566076; font-size: 13px; }
+    </style>
+  </head>
+  <body>
+    <div class='wrap'>
+      <div class='card'>
+        <h2>OrionPulse Agent</h2>
+        <p class='muted'>Ask business questions, optionally generate charts and BI export packs.</p>
+        <textarea id='q' placeholder='Example: why did margin drop in APAC and show charts'></textarea>
+        <div class='row'>
+          <label><input type='checkbox' id='withVisuals' checked /> Include visuals</label>
+          <label><input type='checkbox' id='withBI' /> Include BI exports</label>
+          <label><input type='checkbox' id='autoSpeak' checked /> Auto speak answer</label>
+          <select id='fmt'>
+            <option value='png'>png</option>
+            <option value='svg'>svg</option>
+            <option value='csv'>csv (BI)</option>
+          </select>
+          <button id='askBtn' onclick='askAgent()'>Ask Agent</button>
+          <button id='micBtn' onclick='toggleMic()'>🎤 Start Listening</button>
+          <button id='stopSpeakBtn' onclick='stopSpeaking()'>⏹ Stop Voice</button>
+        </div>
+        <div class='row'>
+          <label>Voice:
+            <select id='voiceSelect'></select>
+          </label>
+          <label>Rate:
+            <input id='rate' type='range' min='0.7' max='1.3' step='0.1' value='1.0' />
+          </label>
+          <span id='micStatus' class='muted'>Mic: idle</span>
+          <span id='modeInfo' class='muted'>Mode: -</span>
+          <span id='fallbackInfo' class='muted'>Fallback: none</span>
+        </div>
+        <div class='row'>
+          <span id='warningInfo' class='muted'>Warnings: none</span>
+        </div>
+        <div id='out' class='out'>Response will appear here...</div>
+      </div>
+    </div>
+    <script>
+      let recognition = null;
+      let recognizing = false;
+      let voices = [];
+
+      function loadVoices() {
+        voices = speechSynthesis.getVoices() || [];
+        const sel = document.getElementById('voiceSelect');
+        sel.innerHTML = '';
+        voices.forEach((v, i) => {
+          const opt = document.createElement('option');
+          opt.value = String(i);
+          opt.textContent = `${v.name} (${v.lang})`;
+          sel.appendChild(opt);
+        });
+        if (!voices.length) {
+          const opt = document.createElement('option');
+          opt.value = '-1';
+          opt.textContent = 'Default voice';
+          sel.appendChild(opt);
+        }
+      }
+
+      function initMic() {
+        const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SR) {
+          document.getElementById('micStatus').textContent = 'Mic: SpeechRecognition not supported';
+          document.getElementById('micBtn').disabled = true;
+          return;
+        }
+        recognition = new SR();
+        recognition.lang = 'en-US';
+        recognition.interimResults = true;
+        recognition.continuous = false;
+        recognition.onstart = () => {
+          recognizing = true;
+          document.getElementById('micStatus').textContent = 'Mic: listening...';
+          document.getElementById('micBtn').textContent = '🛑 Stop Listening';
+        };
+        recognition.onend = () => {
+          recognizing = false;
+          document.getElementById('micStatus').textContent = 'Mic: idle';
+          document.getElementById('micBtn').textContent = '🎤 Start Listening';
+        };
+        recognition.onresult = (e) => {
+          let transcript = '';
+          for (let i = e.resultIndex; i < e.results.length; i++) {
+            transcript += e.results[i][0].transcript;
+          }
+          document.getElementById('q').value = transcript.trim();
+        };
+        recognition.onerror = (e) => {
+          document.getElementById('micStatus').textContent = 'Mic error: ' + e.error;
+        };
+      }
+
+      function toggleMic() {
+        if (!recognition) return;
+        if (recognizing) recognition.stop();
+        else recognition.start();
+      }
+
+      function stopSpeaking() {
+        speechSynthesis.cancel();
+      }
+
+      function speakText(text) {
+        if (!text) return;
+        if (!('speechSynthesis' in window)) return;
+        speechSynthesis.cancel();
+        const utt = new SpeechSynthesisUtterance(text);
+        const sel = document.getElementById('voiceSelect');
+        const idx = Number(sel.value || -1);
+        if (idx >= 0 && voices[idx]) utt.voice = voices[idx];
+        utt.rate = Number(document.getElementById('rate').value || 1.0);
+        speechSynthesis.speak(utt);
+      }
+
+      async function askAgent() {
+        const q = document.getElementById('q').value.trim();
+        const withVisuals = document.getElementById('withVisuals').checked;
+        const withBI = document.getElementById('withBI').checked;
+        const autoSpeak = document.getElementById('autoSpeak').checked;
+        const fmt = document.getElementById('fmt').value;
+        const out = document.getElementById('out');
+        const btn = document.getElementById('askBtn');
+        if (!q) { out.textContent = 'Please enter a question.'; return; }
+        btn.disabled = true;
+        out.textContent = 'Thinking...';
+        try {
+          const resp = await fetch('/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ q, with_visuals: withVisuals, with_bi: withBI, fmt })
+          });
+          const data = await resp.json();
+          out.textContent = JSON.stringify(data, null, 2);
+          const modeText = data?.execution_mode || '-';
+          const fallback = data?.fallback_reason || 'none';
+          const warnings = Array.isArray(data?.warnings) ? data.warnings : [];
+          document.getElementById('modeInfo').textContent = `Mode: ${modeText}`;
+          document.getElementById('fallbackInfo').textContent = `Fallback: ${fallback}`;
+          document.getElementById('warningInfo').textContent = `Warnings: ${warnings.length ? warnings.join(' | ') : 'none'}`;
+          if (autoSpeak && data && data.data && data.data.answer) speakText(data.data.answer);
+        } catch (e) {
+          out.textContent = 'Error: ' + e;
+        } finally {
+          btn.disabled = false;
+        }
+      }
+
+      window.speechSynthesis?.addEventListener?.('voiceschanged', loadVoices);
+      loadVoices();
+      initMic();
+    </script>
+  </body>
+</html>

@@ -21,7 +21,7 @@ test/
 artifacts/agent-traces/
 artifacts/charts/
 artifacts/ui-tests/
-artifacts/bi_exports/
+artifacts/analytics_exports/
 artifacts/*.json
 
 # Local runtime memory/state
