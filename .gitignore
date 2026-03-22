@@ -29,3 +29,5 @@ data/agent_memory.json
 
 # Editor settings
 .vscode/
+.cline/
+memory bank
