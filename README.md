@@ -7,7 +7,7 @@ It supports:
 - Forecasting and anomaly detection
 - Dashboard/storyboard spec generation
 - Analytics export package generation for BI tools
-- MCP tool access, CLI usage, and a web UI/API
+- MCP tool access, CLI usage, and a WEB UI/API
 
 ## Core capabilities
 
