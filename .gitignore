@@ -1,0 +1,31 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.pyc
+*.pyo
+*.pyd
+*.db
+.env
+.env.*
+.vscode/.ropeproject
+
+# General build/test outputs
+build/
+dist/
+coverage/
+test/
+
+# Runtime/generated artifacts (keep repo clean + privacy-safe)
+artifacts/agent-traces/
+artifacts/charts/
+artifacts/ui-tests/
+artifacts/analytics_exports/
+artifacts/*.json
+
+# Local runtime memory/state
+data/agent_memory.json
+
+# Editor settings
+.vscode/
