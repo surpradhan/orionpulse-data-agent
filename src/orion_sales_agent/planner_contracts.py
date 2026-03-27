@@ -1,6 +1,5 @@
-from __future__ import annotations
-
 """Validation helpers for planner/critique/synthesis JSON contracts."""
+from __future__ import annotations
 
 from typing import Any
 

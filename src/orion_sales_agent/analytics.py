@@ -1,5 +1,5 @@
-from __future__ import annotations
 """Analytics primitives for KPI summaries, forecasting, and anomaly detection."""
+from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from math import sqrt
@@ -45,7 +45,11 @@ def kpi_summary(db_path: str, grain: str = "month", period_filter: str | None = 
     if grain not in {"month", "quarter"}:
         raise ValueError("grain must be month or quarter")
 
-    period_expr = "substr(order_date, 1, 7)" if grain == "month" else "substr(order_date, 1, 4) || '-Q' || ((cast(substr(order_date,6,2) as int)+2)/3)"
+    period_expr = (
+        "substr(order_date, 1, 7)"
+        if grain == "month"
+        else "substr(order_date, 1, 4) || '-Q' || ((cast(substr(order_date,6,2) as int)+2)/3)"
+    )
     sql = f"""
         SELECT
             {period_expr} AS period,
@@ -107,9 +111,14 @@ def forecast_metric(db_path: str, metric: str = "net_revenue", horizon: int = 3)
         return _empty_series_response(metric, horizon, "No non-null historical values available")
 
     if len(df) < 8:
-        return _empty_series_response(metric, horizon, "Insufficient history: need at least 8 periods")
+        return _empty_series_response(
+            metric, horizon, "Insufficient history: need at least 8 periods"
+        )
 
-    series = pd.Series(df["value"].values, index=pd.period_range(df.iloc[0]["period"], periods=len(df), freq="M"))
+    series = pd.Series(
+        df["value"].values,
+        index=pd.period_range(df.iloc[0]["period"], periods=len(df), freq="M"),
+    )
 
     selected = select_forecast_method(series)
     seasonal = "add" if selected == "holt_winters_v1" else None
@@ -129,7 +138,10 @@ def forecast_metric(db_path: str, metric: str = "net_revenue", horizon: int = 3)
     diagnostics = compute_forecast_diagnostics(series, horizon=horizon, method=method)
 
     resid_std = float(getattr(fit, "resid", pd.Series(dtype=float)).std() or 0.0)
-    hist = [ForecastPoint(period=str(p), value=float(v)) for p, v in zip(series.index, series.values)]
+    hist = [
+        ForecastPoint(period=str(p), value=float(v))
+        for p, v in zip(series.index, series.values)
+    ]
     pred: list[ForecastPoint] = []
     for i, (p, v) in enumerate(zip(future.index, future.values), start=1):
         spread = 1.96 * resid_std * sqrt(i) if resid_std > 0 else max(abs(float(v)) * 0.05, 1.0)
@@ -251,9 +263,14 @@ def compute_forecast_diagnostics(
                 seasonal_periods=12 if seasonal else None,
             )
             backtest_fit = backtest_model.fit(optimized=True)
-            candidate_pred = pd.Series(backtest_fit.forecast(len(test)).values, index=test.index).astype(float)
+            candidate_pred = (
+                pd.Series(backtest_fit.forecast(len(test)).values, index=test.index)
+                .astype(float)
+            )
             candidate_err = (test.astype(float) - candidate_pred).pow(2)
-            candidate_rmse = float(sqrt(float(candidate_err.mean()))) if len(candidate_err) else None
+            candidate_rmse = (
+                float(sqrt(float(candidate_err.mean()))) if len(candidate_err) else None
+            )
             candidates.append(
                 {
                     "method": candidate_name,
@@ -319,13 +336,13 @@ def compute_forecast_diagnostics(
 
     denom_mape = actual.abs().replace(0, pd.NA)
     ape = (abs_err / denom_mape).dropna()
-    mape = float((ape.mean() * 100.0)) if not ape.empty else None
+    mape = float(ape.mean() * 100.0) if not ape.empty else None
     if mape is not None and mape < 0:
         mape = 0.0
 
     smape_denom = (actual.abs() + forecast.abs()).replace(0, pd.NA)
     smape_vals = ((2.0 * abs_err) / smape_denom).dropna()
-    smape = float((smape_vals.mean() * 100.0)) if not smape_vals.empty else None
+    smape = float(smape_vals.mean() * 100.0) if not smape_vals.empty else None
     if smape is not None and smape < 0:
         smape = 0.0
 
@@ -343,7 +360,9 @@ def compute_forecast_diagnostics(
     }
 
 
-def anomaly_detection(db_path: str, metric: str = "net_revenue", threshold: float = 2.0) -> list[dict]:
+def anomaly_detection(
+    db_path: str, metric: str = "net_revenue", threshold: float = 2.0
+) -> list[dict]:
     """Detect outliers via z-score thresholding over monthly aggregated metric."""
     if metric not in {"net_revenue", "margin", "units_sold"}:
         raise ValueError("Unsupported metric")

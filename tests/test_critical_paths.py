@@ -54,7 +54,9 @@ def test_llm_fallback_on_bad_json(monkeypatch):
     monkeypatch.setattr(agent, "_llm_chat", bad_llm)
     resp = agent.answer("forecast next quarter")
     assert resp.execution_mode in {"deterministic", "fallback_rule_based", "llm_orchestrated"}
-    assert resp.intent in {"forecast", "kpi", "root_cause", "general", "storyboard", "dashboard", "anomaly"}
+    assert resp.intent in {
+        "forecast", "kpi", "root_cause", "general", "storyboard", "dashboard", "anomaly"
+    }
 
 
 def test_llm_requested_without_configuration_reports_fallback(monkeypatch):
@@ -74,11 +76,15 @@ def test_web_auth_roles(monkeypatch):
     r1 = client.get("/ask", params={"q": "show kpi summary"})
     assert r1.status_code == 401
 
-    r2 = client.get("/ask", params={"q": "show kpi summary"}, headers={"x-orion-token": "analyst123"})
+    r2 = client.get(
+        "/ask", params={"q": "show kpi summary"}, headers={"x-orion-token": "analyst123"}
+    )
     assert r2.status_code == 200
     body2 = r2.json()
     assert body2["status"] == "ok"
-    assert body2["execution_mode"] in {"deterministic", "llm_orchestrated", "fallback_rule_based"}
+    assert body2["execution_mode"] in {
+        "deterministic", "llm_orchestrated", "fallback_rule_based"
+    }
     assert "trace_id" in body2
     assert "timestamp" in body2
     assert "warnings" in body2
@@ -99,10 +105,18 @@ def test_web_auth_roles(monkeypatch):
     assert isinstance(body2c["warnings"], list)
     assert isinstance(body2c["data"], dict)
 
-    r3 = client.get("/ask_with_analytics_exports", params={"q": "prepare analytics exports"}, headers={"x-orion-token": "analyst123"})
+    r3 = client.get(
+        "/ask_with_analytics_exports",
+        params={"q": "prepare analytics exports"},
+        headers={"x-orion-token": "analyst123"},
+    )
     assert r3.status_code == 403
 
-    r4 = client.get("/ask_with_analytics_exports", params={"q": "prepare analytics exports"}, headers={"x-orion-token": "admin123"})
+    r4 = client.get(
+        "/ask_with_analytics_exports",
+        params={"q": "prepare analytics exports"},
+        headers={"x-orion-token": "admin123"},
+    )
     assert r4.status_code == 200
     body4 = r4.json()
     assert body4["status"] == "ok"
@@ -116,7 +130,9 @@ def test_v1_routes_available(monkeypatch):
     monkeypatch.setattr(settings, "auth_required", True)
     client = TestClient(app)
 
-    r1 = client.get("/v1/ask", params={"q": "show kpi summary"}, headers={"x-orion-token": "analyst123"})
+    r1 = client.get(
+        "/v1/ask", params={"q": "show kpi summary"}, headers={"x-orion-token": "analyst123"}
+    )
     assert r1.status_code == 200
     assert r1.json()["status"] == "ok"
 

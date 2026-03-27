@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-import json
-from pathlib import Path
 import sys
+from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 
@@ -10,8 +9,12 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from mcp_server.server import create_sql_view, run_anomaly_detection, run_forecast, run_sql
-
+from mcp_server.server import (  # noqa: E402
+    create_sql_view,
+    run_anomaly_detection,
+    run_forecast,
+    run_sql,
+)
 
 ART = Path("artifacts/ui-tests")
 ART.mkdir(parents=True, exist_ok=True)
@@ -48,7 +51,10 @@ def main() -> None:
     results.append(("UI-004", "PASS" if stable else "FAIL", "Repeated refresh stability"))
 
     # AUTH current-state check (no auth expected)
-    auth_ok = all((ART / f).exists() for f in ["UI-001_home.html", "UI-002_kpi.json", "UI-003_forecast.json"])
+    auth_ok = all(
+        (ART / f).exists()
+        for f in ["UI-001_home.html", "UI-002_kpi.json", "UI-003_forecast.json"]
+    )
     results.append(("AUTH-001", "PASS" if auth_ok else "FAIL", "Unauthenticated routes reachable"))
 
     # Safety/API hardening checks

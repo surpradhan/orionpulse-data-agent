@@ -2,5 +2,4 @@ from __future__ import annotations
 
 from src.orion_sales_agent.visualization import set_test_safe_matplotlib_backend
 
-
 set_test_safe_matplotlib_backend()

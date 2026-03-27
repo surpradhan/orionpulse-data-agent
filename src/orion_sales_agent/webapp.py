@@ -1,12 +1,12 @@
-from __future__ import annotations
 """FastAPI web layer for OrionPulse.
 
 Provides typed API endpoints, token-role access control, response envelope
 standardization, and a lightweight built-in HTML chat UI.
 """
+from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
@@ -61,7 +61,7 @@ def _response_envelope(
     payload = {
         "status": "ok",
         "trace_id": f"orion-{uuid4().hex[:12]}",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "warnings": warnings or [],
         "data": data,
     }
@@ -118,7 +118,9 @@ def _chat_impl(payload: ChatPayload, x_orion_token: str | None):
 
         bfmt = fmt if fmt in {"csv", "parquet"} else "csv"
         result["analytics_exports"] = export_analytics_pack(fmt=bfmt)
-    return _response_envelope(result, execution_mode=resp.execution_mode, fallback_reason=resp.fallback_reason)
+    return _response_envelope(
+        result, execution_mode=resp.execution_mode, fallback_reason=resp.fallback_reason
+    )
 
 
 @app.post("/chat", response_model=ChatEnvelope)
@@ -181,16 +183,24 @@ def _ask_impl(q: str, x_orion_token: str | None) -> dict:
         "data": resp.data,
         "followups": resp.followups,
     }
-    return _response_envelope(result, execution_mode=resp.execution_mode, fallback_reason=resp.fallback_reason)
+    return _response_envelope(
+        result, execution_mode=resp.execution_mode, fallback_reason=resp.fallback_reason
+    )
 
 
 @app.get("/ask", response_model=AskEnvelope)
-def ask(q: str = Query(..., min_length=3, max_length=400), x_orion_token: str | None = Header(default=None)):
+def ask(
+    q: str = Query(..., min_length=3, max_length=400),
+    x_orion_token: str | None = Header(default=None),
+):
     return _ask_impl(q, x_orion_token)
 
 
 @app.get("/v1/ask", response_model=AskEnvelope)
-def ask_v1(q: str = Query(..., min_length=3, max_length=400), x_orion_token: str | None = Header(default=None)):
+def ask_v1(
+    q: str = Query(..., min_length=3, max_length=400),
+    x_orion_token: str | None = Header(default=None),
+):
     return _ask_impl(q, x_orion_token)
 
 
@@ -215,7 +225,9 @@ def _ask_with_visuals_impl(
         "visuals": visuals,
         "artifacts_base": "/artifacts/charts",
     }
-    return _response_envelope(result, execution_mode=resp.execution_mode, fallback_reason=resp.fallback_reason)
+    return _response_envelope(
+        result, execution_mode=resp.execution_mode, fallback_reason=resp.fallback_reason
+    )
 
 
 @app.get("/ask_with_visuals", response_model=AskWithVisualsEnvelope)

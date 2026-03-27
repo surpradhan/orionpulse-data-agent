@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import pandas as pd
 
-from src.orion_sales_agent.analytics import compute_forecast_diagnostics
-from src.orion_sales_agent.analytics import forecast_metric
-from src.orion_sales_agent.analytics import select_forecast_method
+from src.orion_sales_agent.analytics import (
+    compute_forecast_diagnostics,
+    forecast_metric,
+    select_forecast_method,
+)
 from src.orion_sales_agent.config import settings
 
 

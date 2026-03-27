@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import random
 from dataclasses import dataclass
 from datetime import date
-import random
 
 import pandas as pd
 
@@ -24,7 +24,9 @@ def build_dimensions() -> tuple[pd.DataFrame, pd.DataFrame]:
             (5, "Data Integrator", "Data", "Mid-Market", "2022-05-01", 310.0),
             (6, "Insight AI", "Analytics", "Enterprise", "2023-02-01", 620.0),
         ],
-        columns=["product_id", "product_name", "category", "subcategory", "launch_date", "base_price"],
+        columns=[
+            "product_id", "product_name", "category", "subcategory", "launch_date", "base_price"
+        ],
     )
 
     regions = pd.DataFrame(
@@ -39,7 +41,9 @@ def build_dimensions() -> tuple[pd.DataFrame, pd.DataFrame]:
     return products, regions
 
 
-def build_fact_sales(products: pd.DataFrame, regions: pd.DataFrame, cfg: SeedConfig) -> pd.DataFrame:
+def build_fact_sales(
+    products: pd.DataFrame, regions: pd.DataFrame, cfg: SeedConfig
+) -> pd.DataFrame:
     random.seed(cfg.seed)
     months = pd.date_range(cfg.start_month, cfg.end_month, freq="MS")
     rows: list[tuple] = []

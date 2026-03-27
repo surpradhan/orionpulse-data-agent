@@ -4,9 +4,8 @@ import time
 
 from fastapi.testclient import TestClient
 
-from src.orion_sales_agent import analytics_exports
+from src.orion_sales_agent import analytics_exports, visualization
 from src.orion_sales_agent.config import settings
-from src.orion_sales_agent import visualization
 from src.orion_sales_agent.webapp import app
 
 
@@ -20,7 +19,9 @@ def _stub_heavy_ops(monkeypatch) -> None:
     monkeypatch.setattr(
         visualization,
         "generate_insight_pack",
-        lambda question, fmt="png": [{"chart_type": "stub", "path": f"artifacts/charts/stub.{fmt}", "question": question}],
+        lambda question, fmt="png": [
+            {"chart_type": "stub", "path": f"artifacts/charts/stub.{fmt}", "question": question}
+        ],
     )
     monkeypatch.setattr(
         analytics_exports,
@@ -29,7 +30,9 @@ def _stub_heavy_ops(monkeypatch) -> None:
             "generated_at": "stub",
             "format": fmt,
             "datasets": {"sales_monthly": f"artifacts/analytics_exports/sales_monthly.{fmt}"},
-            "semantic_packs": {"kpi_dictionary.json": "specs/analytics_exports/kpi_dictionary.json"},
+            "semantic_packs": {
+                "kpi_dictionary.json": "specs/analytics_exports/kpi_dictionary.json"
+            },
             "manifest": "artifacts/analytics_exports/manifest.json",
         },
     )
@@ -40,7 +43,12 @@ def test_web_contract_chat_and_ask_family(monkeypatch):
     _stub_heavy_ops(monkeypatch)
     client = TestClient(app)
 
-    chat = client.post("/chat", json={"q": "show kpi summary", "with_visuals": False, "with_analytics": False, "fmt": "png"})
+    chat = client.post(
+        "/chat",
+        json={
+            "q": "show kpi summary", "with_visuals": False, "with_analytics": False, "fmt": "png"
+        },
+    )
     assert chat.status_code == 200
     chat_body = chat.json()
     assert chat_body["status"] == "ok"
@@ -62,7 +70,10 @@ def test_web_contract_chat_and_ask_family(monkeypatch):
     assert "visuals" in visuals_body["data"]
     assert visuals_body["data"]["artifacts_base"] == "/artifacts/charts"
 
-    analytics = client.get("/ask_with_analytics_exports", params={"q": "prepare analytics exports", "fmt": "csv"})
+    analytics = client.get(
+        "/ask_with_analytics_exports",
+        params={"q": "prepare analytics exports", "fmt": "csv"},
+    )
     assert analytics.status_code == 200
     analytics_body = analytics.json()
     assert analytics_body["status"] == "ok"
@@ -115,7 +126,15 @@ def test_endpoint_smoke_latency_by_mode(monkeypatch):
         mode_timings: dict[str, float] = {}
 
         start = time.perf_counter()
-        chat = client.post("/chat", json={"q": "show kpi summary", "with_visuals": False, "with_analytics": False, "fmt": "png"})
+        chat = client.post(
+            "/chat",
+            json={
+                "q": "show kpi summary",
+                "with_visuals": False,
+                "with_analytics": False,
+                "fmt": "png",
+            },
+        )
         mode_timings["chat"] = time.perf_counter() - start
         assert chat.status_code == 200
 
@@ -125,7 +144,10 @@ def test_endpoint_smoke_latency_by_mode(monkeypatch):
         assert visuals.status_code == 200
 
         start = time.perf_counter()
-        analytics = client.get("/ask_with_analytics_exports", params={"q": "prepare analytics exports", "fmt": "csv"})
+        analytics = client.get(
+            "/ask_with_analytics_exports",
+            params={"q": "prepare analytics exports", "fmt": "csv"},
+        )
         mode_timings["ask_with_analytics_exports"] = time.perf_counter() - start
         assert analytics.status_code == 200
 

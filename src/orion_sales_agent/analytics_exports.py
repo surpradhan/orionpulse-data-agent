@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from .config import settings
 from .db import query_df
-
 
 ANALYTICS_EXPORTS_DIR = Path("artifacts/analytics_exports")
 SPECS_DIR = Path("specs/analytics_exports")
@@ -27,7 +26,9 @@ def export_canonical_datasets(fmt: str = "csv") -> dict[str, Any]:
         "sales_monthly": "SELECT * FROM vw_monthly_sales ORDER BY period",
         "region_performance": "SELECT * FROM vw_region_performance ORDER BY net_revenue DESC",
         "product_margin": "SELECT * FROM vw_product_margin_rank ORDER BY margin_pct DESC",
-        "forecast_output": "SELECT period, net_revenue, margin, units_sold FROM vw_monthly_sales ORDER BY period",
+        "forecast_output": (
+            "SELECT period, net_revenue, margin, units_sold FROM vw_monthly_sales ORDER BY period"
+        ),
     }
 
     outputs: dict[str, str] = {}
@@ -46,26 +47,51 @@ def build_semantic_packs() -> dict[str, str]:
     _ensure_dirs()
 
     kpi_dictionary = {
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
         "kpis": [
             {"name": "net_revenue", "formula": "SUM(net_revenue)", "format": "currency"},
             {"name": "margin", "formula": "SUM(margin)", "format": "currency"},
-            {"name": "margin_pct", "formula": "SUM(margin)/SUM(net_revenue)", "format": "percentage"},
-            {"name": "asp", "formula": "SUM(net_revenue)/SUM(units_sold)", "format": "currency"},
+            {
+                "name": "margin_pct",
+                "formula": "SUM(margin)/SUM(net_revenue)",
+                "format": "percentage",
+            },
+            {
+                "name": "asp",
+                "formula": "SUM(net_revenue)/SUM(units_sold)",
+                "format": "currency",
+            },
         ],
     }
     relationship_map = {
         "entities": ["fact_sales", "dim_product", "dim_region"],
         "joins": [
-            {"left": "fact_sales.product_id", "right": "dim_product.product_id", "type": "many_to_one"},
-            {"left": "fact_sales.region_id", "right": "dim_region.region_id", "type": "many_to_one"},
+            {
+                "left": "fact_sales.product_id",
+                "right": "dim_product.product_id",
+                "type": "many_to_one",
+            },
+            {
+                "left": "fact_sales.region_id",
+                "right": "dim_region.region_id",
+                "type": "many_to_one",
+            },
         ],
         "grain": "transaction",
     }
     visual_mapping = {
-        "net_revenue_trend": {"chart": "line", "dataset": "sales_monthly", "x": "period", "y": "net_revenue"},
-        "region_comparison": {"chart": "bar", "dataset": "region_performance", "x": "region_name", "y": "net_revenue"},
-        "margin_rank": {"chart": "bar", "dataset": "product_margin", "x": "product_name", "y": "margin_pct"},
+        "net_revenue_trend": {
+            "chart": "line", "dataset": "sales_monthly", "x": "period", "y": "net_revenue"
+        },
+        "region_comparison": {
+            "chart": "bar",
+            "dataset": "region_performance",
+            "x": "region_name",
+            "y": "net_revenue",
+        },
+        "margin_rank": {
+            "chart": "bar", "dataset": "product_margin", "x": "product_name", "y": "margin_pct"
+        },
     }
     powerbi_model_notes = {
         "measures": [
@@ -76,7 +102,9 @@ def build_semantic_packs() -> dict[str, str]:
         "relationships": "Use relationship_map.json",
     }
     tableau_pack = {
-        "recommended_data_sources": ["sales_monthly.csv", "region_performance.csv", "product_margin.csv"],
+        "recommended_data_sources": [
+            "sales_monthly.csv", "region_performance.csv", "product_margin.csv"
+        ],
         "worksheet_templates": ["Revenue Trend", "Region Performance", "Product Margin Rank"],
     }
     oac_mapping = {
@@ -105,7 +133,7 @@ def export_analytics_pack(fmt: str = "csv") -> dict[str, Any]:
     data_files = export_canonical_datasets(fmt=fmt)
     semantic_files = build_semantic_packs()
     manifest = {
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
         "format": fmt,
         "datasets": data_files,
         "semantic_packs": semantic_files,

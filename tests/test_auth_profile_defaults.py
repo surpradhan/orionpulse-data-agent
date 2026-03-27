@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-from src.orion_sales_agent.config import AuthProfile
-from src.orion_sales_agent.config import Settings
-from src.orion_sales_agent.config import resolve_auth_profile
-from src.orion_sales_agent.config import validate_auth_configuration
+from src.orion_sales_agent.config import (
+    AuthProfile,
+    Settings,
+    resolve_auth_profile,
+    validate_auth_configuration,
+)
 
 
 def _settings(**overrides) -> Settings:
@@ -62,5 +64,7 @@ def test_non_dev_requires_token_configuration() -> None:
 
 
 def test_dev_open_with_no_tokens_is_allowed() -> None:
-    cfg = _settings(env="dev", auth_required=False, auth_profile="DEV_OPEN", analyst_token="", admin_token="")
+    cfg = _settings(
+        env="dev", auth_required=False, auth_profile="DEV_OPEN", analyst_token="", admin_token=""
+    )
     validate_auth_configuration(cfg)

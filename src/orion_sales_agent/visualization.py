@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -12,7 +12,6 @@ import seaborn as sns
 from .analytics import anomaly_detection, forecast_metric, kpi_summary
 from .config import settings
 from .db import query_df
-
 
 CHART_DIR = Path("artifacts/charts")
 MANIFEST = CHART_DIR / "manifest.json"
@@ -47,7 +46,7 @@ def _register_chart(meta: dict[str, Any]) -> None:
 
 def _save_plot(fig, base_name: str, fmt: str = "png") -> str:
     _init_chart_dir()
-    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
     file_name = f"{_safe_slug(base_name)}_{ts}.{fmt}"
     out = CHART_DIR / file_name
     fig.tight_layout()
@@ -75,7 +74,10 @@ def plot_kpi_trend(fmt: str = "png") -> dict[str, Any]:
 
 
 def plot_region_performance(fmt: str = "png") -> dict[str, Any]:
-    df = query_df(settings.db_path, "SELECT region_name, net_revenue FROM vw_region_performance ORDER BY net_revenue DESC")
+    df = query_df(
+        settings.db_path,
+        "SELECT region_name, net_revenue FROM vw_region_performance ORDER BY net_revenue DESC",
+    )
     if df.empty:
         return {"status": "empty", "reason": "No region performance rows available"}
     fig, ax = plt.subplots(figsize=(8, 4))
@@ -89,7 +91,9 @@ def plot_region_performance(fmt: str = "png") -> dict[str, Any]:
     return meta
 
 
-def plot_forecast_with_band(metric: str = "net_revenue", horizon: int = 3, fmt: str = "png") -> dict[str, Any]:
+def plot_forecast_with_band(
+    metric: str = "net_revenue", horizon: int = 3, fmt: str = "png"
+) -> dict[str, Any]:
     fc = forecast_metric(settings.db_path, metric=metric, horizon=horizon)
     history = fc.get("history", [])
     pred = fc.get("forecast", [])
@@ -106,7 +110,10 @@ def plot_forecast_with_band(metric: str = "net_revenue", horizon: int = 3, fmt: 
     fig, ax = plt.subplots(figsize=(10, 4))
     sns.lineplot(x=x_hist, y=y_hist, marker="o", label="History", ax=ax)
     sns.lineplot(x=x_pred, y=y_pred, marker="o", label="Forecast", ax=ax)
-    ax.fill_between(range(len(x_hist), len(x_hist) + len(x_pred)), lower, upper, alpha=0.2, label="Confidence Band")
+    ax.fill_between(
+        range(len(x_hist), len(x_hist) + len(x_pred)), lower, upper, alpha=0.2,
+        label="Confidence Band",
+    )
     all_x = x_hist + x_pred
     ax.set_xticks(range(len(all_x)))
     ax.set_xticklabels(all_x, rotation=45)
@@ -116,15 +123,20 @@ def plot_forecast_with_band(metric: str = "net_revenue", horizon: int = 3, fmt: 
     ax.legend()
 
     path = _save_plot(fig, f"forecast_{metric}", fmt)
-    meta = {"chart_type": "forecast_with_band", "path": path, "points": len(all_x), "format": fmt}
+    meta = {
+        "chart_type": "forecast_with_band", "path": path, "points": len(all_x), "format": fmt
+    }
     _register_chart(meta)
     return meta
 
 
-def plot_anomaly_timeline(metric: str = "net_revenue", threshold: float = 2.0, fmt: str = "png") -> dict[str, Any]:
+def plot_anomaly_timeline(
+    metric: str = "net_revenue", threshold: float = 2.0, fmt: str = "png"
+) -> dict[str, Any]:
     base = query_df(
         settings.db_path,
-        f"SELECT substr(order_date,1,7) AS period, SUM({metric}) AS value FROM fact_sales GROUP BY 1 ORDER BY 1",
+        f"SELECT substr(order_date,1,7) AS period, SUM({metric}) AS value"
+        " FROM fact_sales GROUP BY 1 ORDER BY 1",
     )
     anomalies = anomaly_detection(settings.db_path, metric=metric, threshold=threshold)
     if base.empty:
@@ -133,7 +145,12 @@ def plot_anomaly_timeline(metric: str = "net_revenue", threshold: float = 2.0, f
     fig, ax = plt.subplots(figsize=(10, 4))
     sns.lineplot(data=base, x="period", y="value", marker="o", ax=ax)
     if anomalies:
-        ax.scatter([a["period"] for a in anomalies], [a["value"] for a in anomalies], color="red", label="Anomaly")
+        ax.scatter(
+            [a["period"] for a in anomalies],
+            [a["value"] for a in anomalies],
+            color="red",
+            label="Anomaly",
+        )
     ax.set_title(f"Anomaly Timeline ({metric})")
     ax.set_xlabel("Period")
     ax.set_ylabel(metric)
@@ -141,12 +158,23 @@ def plot_anomaly_timeline(metric: str = "net_revenue", threshold: float = 2.0, f
     if anomalies:
         ax.legend()
     path = _save_plot(fig, f"anomaly_{metric}", fmt)
-    meta = {"chart_type": "anomaly_timeline", "path": path, "anomaly_count": len(anomalies), "format": fmt}
+    meta = {
+        "chart_type": "anomaly_timeline",
+        "path": path,
+        "anomaly_count": len(anomalies),
+        "format": fmt,
+    }
     _register_chart(meta)
     return meta
 
 
-def generate_chart(chart_type: str, metric: str = "net_revenue", horizon: int = 3, threshold: float = 2.0, fmt: str = "png") -> dict[str, Any]:
+def generate_chart(
+    chart_type: str,
+    metric: str = "net_revenue",
+    horizon: int = 3,
+    threshold: float = 2.0,
+    fmt: str = "png",
+) -> dict[str, Any]:
     if fmt not in {"png", "svg"}:
         raise ValueError("fmt must be png or svg")
     if chart_type == "kpi_trend":

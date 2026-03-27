@@ -1,6 +1,5 @@
-from __future__ import annotations
-
 """Tool registry for LLM planner orchestration actions."""
+from __future__ import annotations
 
 from typing import Any
 
@@ -59,5 +58,7 @@ def build_tool_registry() -> dict[str, Any]:
             question=str(args.get("question", "")),
             fmt=str(args.get("fmt", "png")),
         ),
-        "export_analytics_pack": lambda args: export_analytics_pack(fmt=str(args.get("fmt", "csv"))),
+        "export_analytics_pack": lambda args: export_analytics_pack(
+            fmt=str(args.get("fmt", "csv"))
+        ),
     }

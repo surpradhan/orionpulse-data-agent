@@ -84,10 +84,15 @@ def validate_auth_configuration(cfg: Settings) -> None:
 
     if env != "dev" and not tokens_ready:
         raise RuntimeError(
-            "Non-dev environment requires ORION_ANALYST_TOKEN and/or ORION_ADMIN_TOKEN to be configured"
+            "Non-dev environment requires ORION_ANALYST_TOKEN and/or ORION_ADMIN_TOKEN"
+            " to be configured"
         )
 
-    if profile in {AuthProfile.PROD_STRICT, AuthProfile.DEV_GUARDED} and cfg.auth_required and not tokens_ready:
+    if (
+        profile in {AuthProfile.PROD_STRICT, AuthProfile.DEV_GUARDED}
+        and cfg.auth_required
+        and not tokens_ready
+    ):
         raise RuntimeError(
             "Auth is required but no ORION_ANALYST_TOKEN/ORION_ADMIN_TOKEN is configured"
         )

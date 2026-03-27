@@ -1,15 +1,16 @@
 from __future__ import annotations
 
-from pathlib import Path
 import sys
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from seed_orion_data import SeedConfig, build_dimensions, build_fact_sales
-from src.orion_sales_agent.config import settings
-from src.orion_sales_agent.db import execute_script, get_connection
+from seed_orion_data import SeedConfig, build_dimensions, build_fact_sales  # noqa: E402
+
+from src.orion_sales_agent.config import settings  # noqa: E402
+from src.orion_sales_agent.db import execute_script, get_connection  # noqa: E402
 
 
 def main() -> None:

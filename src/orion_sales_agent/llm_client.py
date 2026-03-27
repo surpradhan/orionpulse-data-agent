@@ -1,6 +1,5 @@
-from __future__ import annotations
-
 """Small HTTP client wrapper for LLM chat-completions calls."""
+from __future__ import annotations
 
 import httpx
 

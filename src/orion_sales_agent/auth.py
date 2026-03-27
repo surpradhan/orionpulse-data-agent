@@ -1,6 +1,5 @@
-from __future__ import annotations
-
 """Authentication and authorization helpers for web/API channels."""
+from __future__ import annotations
 
 from fastapi import HTTPException
 

@@ -1,28 +1,27 @@
-from __future__ import annotations
 """Agent orchestration layer for OrionPulse.
 
 This module provides deterministic and optional LLM-orchestrated answering flows,
 tool execution routing, lightweight short-term memory persistence, and trace
 artifact emission for debugging/operations.
 """
+from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from .analytics import anomaly_detection, forecast_metric, kpi_summary
+from .analytics_exports import export_analytics_pack
+from .config import settings
+from .db import query_df
 from .llm_client import llm_chat, llm_enabled
 from .memory_store import load_memory, save_memory
 from .planner_contracts import validate_critique, validate_planner_plan, validate_synthesis
-from .config import settings
-from .db import query_df
 from .specs import dashboard_spec, storyboard_spec
-from .analytics_exports import export_analytics_pack
 from .tool_registry import build_tool_registry
-from .visualization import generate_chart, generate_insight_pack
-
+from .visualization import generate_insight_pack
 
 SKILLS_DIR = Path("skills")
 MEMORY_FILE = Path("data/agent_memory.json")
@@ -69,7 +68,7 @@ class OrionAgent:
             return
         out_dir = Path(settings.trace_path)
         out_dir.mkdir(parents=True, exist_ok=True)
-        ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+        ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
         (out_dir / f"trace_{ts}.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
     def _llm_enabled(self) -> bool:
@@ -138,7 +137,9 @@ class OrionAgent:
         """Return callable registry used by LLM planner actions."""
         return build_tool_registry()
 
-    def _rule_based_answer(self, question: str, execution_mode: str = "deterministic") -> AgentResponse:
+    def _rule_based_answer(
+        self, question: str, execution_mode: str = "deterministic"
+    ) -> AgentResponse:
         """Produce a deterministic answer using intent-driven routing.
 
         This path is used for explicit deterministic mode and as safety fallback
@@ -153,7 +154,10 @@ class OrionAgent:
         if intent == "forecast":
             data = forecast_metric(settings.db_path, horizon=settings.default_forecast_horizon)
             answer = "Generated forward forecast with assumptions and recent trend context."
-            followups = ["Do you want forecast split by region?", "Should I compare forecast vs last year?"]
+            followups = [
+                "Do you want forecast split by region?",
+                "Should I compare forecast vs last year?",
+            ]
         elif intent == "anomaly":
             data = anomaly_detection(settings.db_path)
             answer = "Detected significant outlier periods using z-score thresholding."
@@ -164,31 +168,58 @@ class OrionAgent:
             followups = ["Need an operations-focused dashboard variant?"]
         elif intent == "storyboard":
             data = storyboard_spec(goal=question)
-            answer = "Generated executive storyboard flow (context → insights → prediction → actions)."
+            answer = (
+                "Generated executive storyboard flow (context → insights → prediction → actions)."
+            )
             followups = ["Should I tailor this for CFO audience?"]
         elif intent == "root_cause":
             data = self._root_cause_pack()
-            answer = "Prepared multi-step driver analysis pack across region, product, and anomalies."
+            answer = (
+                "Prepared multi-step driver analysis pack across region, product, and anomalies."
+            )
             followups = ["Want me to convert this into action recommendations?"]
         elif intent == "kpi":
             data = kpi_summary(settings.db_path)
             answer = "Computed KPI summary across available periods."
             followups = ["Need quarter-over-quarter or YoY comparison?"]
-        elif "chart" in question.lower() or "visual" in question.lower() or "graph" in question.lower():
+        elif (
+            "chart" in question.lower()
+            or "visual" in question.lower()
+            or "graph" in question.lower()
+        ):
             data = generate_insight_pack(question)
             answer = "Generated visualization insight pack with saved chart artifacts."
-            followups = ["Do you want SVG exports as well?", "Should I include anomaly and forecast charts?"]
-        elif "analytics export" in question.lower() or "semantic export" in question.lower() or "export pack" in question.lower():
+            followups = [
+                "Do you want SVG exports as well?",
+                "Should I include anomaly and forecast charts?",
+            ]
+        elif (
+            "analytics export" in question.lower()
+            or "semantic export" in question.lower()
+            or "export pack" in question.lower()
+        ):
             data = export_analytics_pack(fmt="csv")
-            answer = "Generated Analytics Export pack with canonical datasets and semantic mapping files."
-            followups = ["Should I also generate parquet exports?", "Need tool-specific starter templates refined further?"]
+            answer = (
+                "Generated Analytics Export pack with canonical datasets"
+                " and semantic mapping files."
+            )
+            followups = [
+                "Should I also generate parquet exports?",
+                "Need tool-specific starter templates refined further?",
+            ]
         else:
             data = {
-                "message": "I can help with KPI summary, root-cause analysis, forecasts, anomalies, dashboards, and storyboards.",
+                "message": (
+                    "I can help with KPI summary, root-cause analysis, forecasts,"
+                    " anomalies, dashboards, and storyboards."
+                ),
                 "skills_loaded": sorted(self.skills.keys()),
             }
             answer = "Mapped your request to available analytical capabilities."
-            followups = ["Try: 'forecast next 3 months revenue'", "Try: 'why did margin drop in APAC?'"]
+            followups = [
+                "Try: 'forecast next 3 months revenue'",
+                "Try: 'why did margin drop in APAC?'",
+            ]
 
         reasoning.append("Generated structured response with next-best follow-up questions")
         return AgentResponse(
@@ -286,7 +317,9 @@ class OrionAgent:
                 "You are a critic. Return STRICT JSON: {continue:boolean, reason:string}. "
                 "continue=false if enough evidence exists to answer confidently."
             )
-            critique_user = json.dumps({"question": question, "observations": observations}, ensure_ascii=False)
+            critique_user = json.dumps(
+                {"question": question, "observations": observations}, ensure_ascii=False
+            )
             crit_raw = self._llm_chat(critique_system, critique_user)
             critique = self._parse_llm_json(crit_raw, "critique")
             reasoning.append(f"Critique: {critique.get('reason', '')}")
@@ -304,7 +337,9 @@ class OrionAgent:
             "You are a business analyst agent. Return STRICT JSON with keys: "
             "answer (string), followups (array of strings)."
         )
-        synth_user = json.dumps({"question": question, "observations": observations}, ensure_ascii=False)
+        synth_user = json.dumps(
+            {"question": question, "observations": observations}, ensure_ascii=False
+        )
         synth_raw = self._llm_chat(synth_system, synth_user)
         synth = self._parse_llm_json(synth_raw, "synthesis")
         self._write_trace(
@@ -369,7 +404,7 @@ class OrionAgent:
             "question": question,
             "llm_enabled": self._llm_enabled(),
             "requested_mode": mode,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         }
         normalized_mode = mode.lower().strip()
         if normalized_mode not in {"auto", "deterministic", "llm"}:

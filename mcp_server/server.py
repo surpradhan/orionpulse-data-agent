@@ -1,29 +1,32 @@
-from __future__ import annotations
 """MCP tool server exposing OrionPulse analytics and metadata operations."""
+from __future__ import annotations
 
 import json
 import re
 import sqlite3
-from pathlib import Path
 import sys
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import FastMCP  # noqa: E402
 
-from src.orion_sales_agent.analytics import anomaly_detection, forecast_metric, kpi_summary
-from src.orion_sales_agent.config import settings
-from src.orion_sales_agent.db import get_connection, query_df
-from src.orion_sales_agent.specs import dashboard_spec, storyboard_spec
-from src.orion_sales_agent.sql_policy import (
+from src.orion_sales_agent.analytics import (  # noqa: E402
+    anomaly_detection,
+    forecast_metric,
+    kpi_summary,
+)
+from src.orion_sales_agent.config import settings  # noqa: E402
+from src.orion_sales_agent.db import get_connection, query_df  # noqa: E402
+from src.orion_sales_agent.specs import dashboard_spec, storyboard_spec  # noqa: E402
+from src.orion_sales_agent.sql_policy import (  # noqa: E402
     validate_readonly_select,
     validate_single_statement,
     validate_with_sqlite_parser,
 )
-from src.orion_sales_agent.views import apply_views
-
+from src.orion_sales_agent.views import apply_views  # noqa: E402
 
 mcp = FastMCP("orion-sales-agent")
 
@@ -107,7 +110,9 @@ def get_kpi_summary(period_filter: str = "", grain: str = "month") -> list[dict]
 def create_sql_view(view_name: str, definition: str) -> str:
     """Create or replace SQL view under admin-mode controls."""
     if settings.readonly_sql and not settings.admin_mode:
-        raise PermissionError("create_sql_view is disabled in readonly mode unless ORION_ADMIN_MODE=true")
+        raise PermissionError(
+            "create_sql_view is disabled in readonly mode unless ORION_ADMIN_MODE=true"
+        )
     if not settings.admin_mode:
         raise PermissionError("create_sql_view requires ORION_ADMIN_MODE=true")
     if not IDENTIFIER_RE.match(view_name):
@@ -135,7 +140,9 @@ def generate_dashboard_spec(template_name: str = "exec_overview", filters_json: 
 
 
 @mcp.tool()
-def generate_storyboard_spec(goal: str, audience: str = "exec", period: str = "latest_quarter") -> dict:
+def generate_storyboard_spec(
+    goal: str, audience: str = "exec", period: str = "latest_quarter"
+) -> dict:
     """Generate storyboard narrative specification."""
     if not goal or len(goal) > 200:
         raise ValueError("goal must be non-empty and <= 200 chars")

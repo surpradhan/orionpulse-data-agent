@@ -1,6 +1,5 @@
-from __future__ import annotations
-
 """Persistence helpers for lightweight bounded agent conversation memory."""
+from __future__ import annotations
 
 import json
 from pathlib import Path

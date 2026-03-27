@@ -1,5 +1,5 @@
-from __future__ import annotations
 """Centralized SQL safety policy for read-only query validation."""
+from __future__ import annotations
 
 import re
 import sqlite3
