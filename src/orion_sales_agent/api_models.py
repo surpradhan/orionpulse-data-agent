@@ -51,8 +51,8 @@ class ForecastDiagnostics(BaseModel):
     smape: float | None = None
     rmse: float | None = None
     warnings: list[str] = Field(default_factory=list)
-    residual_std: float
-    interval_method: str
+    residual_std: float | None = None
+    interval_method: str | None = None
     candidates: list[dict[str, Any]] = Field(default_factory=list)
 
 

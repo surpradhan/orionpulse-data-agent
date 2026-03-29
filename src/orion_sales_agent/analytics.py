@@ -144,6 +144,9 @@ def forecast_metric(db_path: str, metric: str = "net_revenue", horizon: int = 3)
     ]
     pred: list[ForecastPoint] = []
     for i, (p, v) in enumerate(zip(future.index, future.values), start=1):
+        # Primary: 95% CI widened by sqrt(steps) when residuals are available.
+        # Fallback: 5% of forecast value (floored at 1.0) when model residuals are
+        # zero or unavailable — this is a heuristic interval, not a statistical one.
         spread = 1.96 * resid_std * sqrt(i) if resid_std > 0 else max(abs(float(v)) * 0.05, 1.0)
         pred.append(
             ForecastPoint(
@@ -333,20 +336,21 @@ def compute_forecast_diagnostics(
     forecast = pred
     err = actual - forecast
     abs_err = err.abs()
+    actual_abs = actual.abs()
 
-    denom_mape = actual.abs().replace(0, pd.NA)
+    denom_mape = actual_abs.replace(0, pd.NA)
     ape = (abs_err / denom_mape).dropna()
     mape = float(ape.mean() * 100.0) if not ape.empty else None
     if mape is not None and mape < 0:
         mape = 0.0
 
-    smape_denom = (actual.abs() + forecast.abs()).replace(0, pd.NA)
+    smape_denom = (actual_abs + forecast.abs()).replace(0, pd.NA)
     smape_vals = ((2.0 * abs_err) / smape_denom).dropna()
     smape = float(smape_vals.mean() * 100.0) if not smape_vals.empty else None
     if smape is not None and smape < 0:
         smape = 0.0
 
-    rmse = float(sqrt(float((err.pow(2)).mean()))) if len(err) else None
+    rmse = float(sqrt((err.pow(2)).mean())) if len(err) else None
 
     return {
         "method": selected_method if method == "auto_select_v1" else method,

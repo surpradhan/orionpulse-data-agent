@@ -2,10 +2,13 @@
 from __future__ import annotations
 
 import hmac
+import logging
 
 from fastapi import HTTPException
 
 from .config import auth_tokens_configured, settings
+
+logger = logging.getLogger(__name__)
 
 
 def auth_is_configured() -> bool:
@@ -35,9 +38,11 @@ def require_role(x_orion_token: str | None, required_role: str) -> None:
             return
         if settings.admin_token and hmac.compare_digest(token, settings.admin_token):
             return
+        logger.warning("Failed auth attempt for role=analyst (token present: %s)", bool(token))
         raise HTTPException(status_code=401, detail="Unauthorized: analyst token required")
     if required_role == "admin":
         if settings.admin_token and hmac.compare_digest(token, settings.admin_token):
             return
+        logger.warning("Failed auth attempt for role=admin (token present: %s)", bool(token))
         raise HTTPException(status_code=403, detail="Forbidden: admin token required")
     raise HTTPException(status_code=500, detail="Invalid role requirement")

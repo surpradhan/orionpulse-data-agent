@@ -31,7 +31,7 @@ def llm_chat(system_prompt: str, user_prompt: str) -> str:
         ],
     }
     url = settings.llm_base_url.rstrip("/") + "/chat/completions"
-    with httpx.Client(timeout=30) as client:
+    with httpx.Client(timeout=settings.llm_timeout) as client:
         response = client.post(url, headers=headers, json=payload)
         response.raise_for_status()
         data = response.json()

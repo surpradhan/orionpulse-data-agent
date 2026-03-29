@@ -35,10 +35,18 @@ def _startup_auth_guard() -> None:
     validate_auth_configuration(settings)
 
 
+def _ensure_static_dirs() -> None:
+    """Create static mount directories if they do not exist."""
+
+    Path("artifacts").mkdir(parents=True, exist_ok=True)
+    Path("specs").mkdir(parents=True, exist_ok=True)
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     """FastAPI lifespan hook used for startup auth validation."""
 
+    _ensure_static_dirs()
     _startup_auth_guard()
     yield
 

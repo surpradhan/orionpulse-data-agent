@@ -26,8 +26,8 @@ from .visualization import generate_insight_pack
 
 logger = logging.getLogger(__name__)
 
-SKILLS_DIR = Path("skills")
-MEMORY_FILE = Path("data/agent_memory.json")
+SKILLS_DIR = Path(settings.skills_dir)
+MEMORY_FILE = Path(settings.memory_file)
 
 
 def _load_skills_context() -> dict[str, str]:
@@ -286,7 +286,13 @@ class OrionAgent:
                     execution_mode="llm_orchestrated",
                 )
 
-            action = plan.get("action") or {}
+            action = plan.get("action")
+            if not action or not isinstance(action, dict):
+                observations.append({
+                    "step": step,
+                    "error": "Planner returned final=false but action is missing or null",
+                })
+                continue
             tool = action.get("tool")
             args = action.get("args") or {}
             if tool not in tools:

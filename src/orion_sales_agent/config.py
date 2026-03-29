@@ -46,6 +46,7 @@ class Settings:
     llm_model: str = os.getenv("ORION_LLM_MODEL", "gpt-4o-mini")
     llm_max_steps: int = int(os.getenv("ORION_LLM_MAX_STEPS", "4"))
     llm_json_retries: int = int(os.getenv("ORION_LLM_JSON_RETRIES", "2"))
+    llm_timeout: int = int(os.getenv("ORION_LLM_TIMEOUT", "30"))
     debug_trace: bool = _env_bool("ORION_AGENT_DEBUG_TRACE", False)
     trace_path: str = os.getenv("ORION_AGENT_TRACE_PATH", "artifacts/agent-traces")
     voice_provider: str = os.getenv("ORION_VOICE_PROVIDER", "browser")
@@ -57,6 +58,8 @@ class Settings:
     auth_profile: str = os.getenv("ORION_AUTH_PROFILE", "")
     web_default_mode: str = os.getenv("ORION_WEB_DEFAULT_MODE", "auto")
     cli_default_mode: str = os.getenv("ORION_CLI_DEFAULT_MODE", "deterministic")
+    skills_dir: str = os.getenv("ORION_SKILLS_DIR", "skills")
+    memory_file: str = os.getenv("ORION_MEMORY_FILE", "data/agent_memory.json")
 
 
 def auth_tokens_configured(cfg: Settings) -> bool:
