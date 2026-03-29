@@ -9,7 +9,7 @@ FROM_JOIN_OBJECT_RE = re.compile(
     r'\b(?:from|join)\s+((?:[a-z_][a-z0-9_]*\.)?[a-z_][a-z0-9_]*|"[^"]+")',
     flags=re.IGNORECASE,
 )
-CTE_NAME_RE = re.compile(r"\bwith\s+([a-z_][a-z0-9_]*)\s+as\s*\(", flags=re.IGNORECASE)
+CTE_NAME_RE = re.compile(r"(?:\bwith\s+|,\s*)([a-z_][a-z0-9_]*)\s+as\s*\(", flags=re.IGNORECASE)
 
 
 def validate_single_statement(query: str) -> str:
