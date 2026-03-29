@@ -187,7 +187,7 @@ def select_forecast_method(series: pd.Series) -> str:
     """
     diagnostics = compute_forecast_diagnostics(series, horizon=3, method="auto_select_v1")
     candidates = diagnostics.get("candidates", [])
-    ranked = [c for c in candidates if isinstance(c.get("rmse"), (int, float))]
+    ranked = [c for c in candidates if isinstance(c.get("rmse"), int | float)]
     if not ranked:
         return "holt_linear_v1"
     ranked.sort(key=lambda c: float(c["rmse"]))
@@ -290,7 +290,7 @@ def compute_forecast_diagnostics(
                 }
             )
 
-    successful = [c for c in candidates if isinstance(c.get("rmse"), (int, float))]
+    successful = [c for c in candidates if isinstance(c.get("rmse"), int | float)]
     if not successful:
         warnings.append("Backtest model failed for all candidate methods")
         return {
@@ -366,7 +366,7 @@ def anomaly_detection(
     """Detect outliers via z-score thresholding over monthly aggregated metric."""
     if metric not in {"net_revenue", "margin", "units_sold"}:
         raise ValueError("Unsupported metric")
-    if not isinstance(threshold, (int, float)) or threshold < 1.0 or threshold > 5.0:
+    if not isinstance(threshold, int | float) or threshold < 1.0 or threshold > 5.0:
         raise ValueError("threshold must be a number between 1.0 and 5.0")
 
     df = query_df(

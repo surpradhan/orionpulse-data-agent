@@ -162,7 +162,7 @@ def run_forecast(metric: str = "net_revenue", horizon: int = 3) -> dict:
 @mcp.tool()
 def run_anomaly_detection(metric: str = "net_revenue", threshold: float = 2.0) -> list[dict]:
     """Run anomaly detection with bounded z-score threshold."""
-    if not isinstance(threshold, (int, float)) or threshold < 1.0 or threshold > 5.0:
+    if not isinstance(threshold, int | float) or threshold < 1.0 or threshold > 5.0:
         raise ValueError("threshold must be between 1.0 and 5.0")
     return anomaly_detection(settings.db_path, metric=metric, threshold=threshold)
 
