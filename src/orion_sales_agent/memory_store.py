@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +18,7 @@ def load_memory(memory_file: Path) -> list[dict[str, Any]]:
     if not memory_file.exists():
         return []
     try:
-        return json.loads(memory_file.read_text(encoding="utf-8"))
+        return cast(list[dict[str, Any]], json.loads(memory_file.read_text(encoding="utf-8")))
     except Exception as exc:
         logger.warning("Memory file '%s' could not be parsed, starting fresh: %s", memory_file, exc)
         return []

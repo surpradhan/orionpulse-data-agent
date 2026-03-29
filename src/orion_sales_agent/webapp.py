@@ -96,7 +96,7 @@ def home() -> str:
     return HOME_TEMPLATE.read_text(encoding="utf-8")
 
 
-def _chat_impl(payload: ChatPayload, x_orion_token: str | None):
+def _chat_impl(payload: ChatPayload, x_orion_token: str | None) -> dict:
     """Shared implementation for chat endpoints and versioned aliases."""
 
     require_role(x_orion_token, "analyst")
@@ -132,12 +132,12 @@ def _chat_impl(payload: ChatPayload, x_orion_token: str | None):
 
 
 @app.post("/chat", response_model=ChatEnvelope)
-def chat(payload: ChatPayload, x_orion_token: str | None = Header(default=None)) -> ChatEnvelope:
+def chat(payload: ChatPayload, x_orion_token: str | None = Header(default=None)) -> dict:
     return _chat_impl(payload, x_orion_token)
 
 
 @app.post("/v1/chat", response_model=ChatEnvelope)
-def chat_v1(payload: ChatPayload, x_orion_token: str | None = Header(default=None)) -> ChatEnvelope:
+def chat_v1(payload: ChatPayload, x_orion_token: str | None = Header(default=None)) -> dict:
     return _chat_impl(payload, x_orion_token)
 
 
@@ -149,12 +149,12 @@ def _kpi_impl(x_orion_token: str | None) -> dict:
 
 
 @app.get("/kpi", response_model=KpiEnvelope)
-def kpi(x_orion_token: str | None = Header(default=None)) -> KpiEnvelope:
+def kpi(x_orion_token: str | None = Header(default=None)) -> dict:
     return _kpi_impl(x_orion_token)
 
 
 @app.get("/v1/kpi", response_model=KpiEnvelope)
-def kpi_v1(x_orion_token: str | None = Header(default=None)) -> KpiEnvelope:
+def kpi_v1(x_orion_token: str | None = Header(default=None)) -> dict:
     return _kpi_impl(x_orion_token)
 
 
@@ -170,12 +170,12 @@ def _forecast_impl(x_orion_token: str | None) -> dict:
 
 
 @app.get("/forecast", response_model=ForecastEnvelope)
-def forecast(x_orion_token: str | None = Header(default=None)) -> ForecastEnvelope:
+def forecast(x_orion_token: str | None = Header(default=None)) -> dict:
     return _forecast_impl(x_orion_token)
 
 
 @app.get("/v1/forecast", response_model=ForecastEnvelope)
-def forecast_v1(x_orion_token: str | None = Header(default=None)) -> ForecastEnvelope:
+def forecast_v1(x_orion_token: str | None = Header(default=None)) -> dict:
     return _forecast_impl(x_orion_token)
 
 

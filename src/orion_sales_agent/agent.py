@@ -154,6 +154,7 @@ class OrionAgent:
             f"Classified intent as '{intent}'",
             "Retrieved relevant skills context and selected toolchain",
         ]
+        data: Any = None
 
         if intent == "forecast":
             data = forecast_metric(settings.db_path, horizon=settings.default_forecast_horizon)

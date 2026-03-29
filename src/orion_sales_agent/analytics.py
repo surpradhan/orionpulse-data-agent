@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from math import sqrt
-from typing import TypedDict
+from typing import Any, TypedDict, cast
 
 import pandas as pd
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
@@ -69,7 +69,7 @@ def kpi_summary(db_path: str, grain: str = "month", period_filter: str | None = 
         if len(period_filter) > 40:
             raise ValueError("period_filter too long")
         df = df[df["period"].str.contains(period_filter, regex=False)]
-    return df.to_dict(orient="records")
+    return cast(list[dict[str, Any]], df.to_dict(orient="records"))
 
 
 @dataclass
@@ -193,7 +193,7 @@ def select_forecast_method(series: pd.Series) -> str:
     ranked = [c for c in candidates if isinstance(c.get("rmse"), int | float)]
     if not ranked:
         return "holt_linear_v1"
-    ranked.sort(key=lambda c: float(c["rmse"]))
+    ranked.sort(key=lambda c: float(c["rmse"]))  # type: ignore[arg-type]
     return str(ranked[0]["method"])
 
 
@@ -307,7 +307,7 @@ def compute_forecast_diagnostics(
             "candidates": candidates,
         }
 
-    successful.sort(key=lambda c: float(c["rmse"]))
+    successful.sort(key=lambda c: float(c["rmse"]))  # type: ignore[arg-type]
     selected_method = str(successful[0]["method"])
     selected_seasonal = "add" if selected_method == "holt_winters_v1" else None
     try:
@@ -388,4 +388,4 @@ def anomaly_detection(
     std = df["value"].std() or 1.0
     df["zscore"] = (df["value"] - mean) / std
     out = df[df["zscore"].abs() >= threshold].copy()
-    return out.to_dict(orient="records")
+    return cast(list[dict[str, Any]], out.to_dict(orient="records"))
