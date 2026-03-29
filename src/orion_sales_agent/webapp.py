@@ -51,6 +51,7 @@ async def lifespan(_app: FastAPI):
     yield
 
 
+_ensure_static_dirs()
 app = FastAPI(title="OrionPulse Agent UI", lifespan=lifespan)
 agent = OrionAgent()
 app.mount("/artifacts", StaticFiles(directory="artifacts"), name="artifacts")
