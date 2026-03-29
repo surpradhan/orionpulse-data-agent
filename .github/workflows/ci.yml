@@ -33,5 +33,8 @@ jobs:
       - name: Type check
         run: mypy --ignore-missing-imports src/orion_sales_agent/config.py src/orion_sales_agent/analytics.py src/orion_sales_agent/webapp.py
 
+      - name: Seed database
+        run: python data/init_db.py
+
       - name: Tests
         run: pytest
