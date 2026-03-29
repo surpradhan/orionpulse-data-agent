@@ -8,7 +8,9 @@ from src.orion_sales_agent.sql_policy import (
     validate_single_statement,
 )
 
-ALLOWED = {"fact_sales", "dim_product", "dim_region", "vw_region_performance", "vw_product_margin_rank"}
+ALLOWED = {
+    "fact_sales", "dim_product", "dim_region", "vw_region_performance", "vw_product_margin_rank"
+}
 
 
 # ---------------------------------------------------------------------------
@@ -243,7 +245,10 @@ def test_view_name_in_allowlist_passes() -> None:
 
 
 def test_case_insensitive_table_matching() -> None:
-    query = "SELECT * FROM FACT_SALES JOIN DIM_PRODUCT ON FACT_SALES.product_id = DIM_PRODUCT.product_id"
+    query = (
+        "SELECT * FROM FACT_SALES JOIN DIM_PRODUCT "
+        "ON FACT_SALES.product_id = DIM_PRODUCT.product_id"
+    )
     refs = extract_referenced_objects(query)
     assert "fact_sales" in refs
     assert "dim_product" in refs

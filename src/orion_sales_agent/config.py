@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import warnings
 from dataclasses import dataclass
 from enum import Enum
 
@@ -8,9 +9,14 @@ try:
     from dotenv import load_dotenv
 
     load_dotenv()
-except Exception:
-    # Optional dependency path; app can still run without dotenv auto-load.
-    pass
+except ImportError:
+    pass  # dotenv is optional; env vars can be set directly
+except Exception as _dotenv_exc:
+    warnings.warn(
+        f"dotenv failed to load .env file: {_dotenv_exc}. "
+        "Environment variables will not be sourced from .env.",
+        stacklevel=1,
+    )
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -74,10 +80,30 @@ def resolve_auth_profile(cfg: Settings) -> AuthProfile:
     return AuthProfile.PROD_STRICT
 
 
+_KNOWN_ENVS = {"dev", "staging", "prod"}
+
+
 def validate_auth_configuration(cfg: Settings) -> None:
+    from pathlib import Path
+
+    env = (cfg.env or "dev").strip().lower()
+
+    if env not in _KNOWN_ENVS:
+        warnings.warn(
+            f"ORION_ENV='{cfg.env}' is not a recognised value "
+            f"(expected one of: {', '.join(sorted(_KNOWN_ENVS))}). Defaulting to 'dev' behaviour.",
+            stacklevel=2,
+        )
+
+    db = Path(cfg.db_path)
+    if not db.exists():
+        raise RuntimeError(
+            f"Database not found at '{cfg.db_path}'. "
+            "Run 'python data/init_db.py' to initialise the database."
+        )
+
     profile = resolve_auth_profile(cfg)
     tokens_ready = auth_tokens_configured(cfg)
-    env = (cfg.env or "dev").strip().lower()
 
     if profile == AuthProfile.PROD_STRICT and not cfg.auth_required:
         raise RuntimeError("PROD_STRICT requires ORION_AUTH_REQUIRED=true")

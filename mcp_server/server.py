@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import json
 import re
-import sqlite3
 import sys
 from pathlib import Path
 
@@ -88,11 +87,7 @@ def run_sql(query: str, limit: int = 200) -> list[dict]:
     with get_connection(settings.db_path) as conn:
         validate_with_sqlite_parser(conn, cleaned)
     sql = f"SELECT * FROM ({cleaned}) LIMIT {int(limit)}"
-    try:
-        df = query_df(settings.db_path, sql)
-    except sqlite3.OperationalError:
-        df = query_df(settings.db_path, query)
-        df = df.head(limit)
+    df = query_df(settings.db_path, sql)
     return df.to_dict(orient="records")
 
 

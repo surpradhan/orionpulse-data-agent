@@ -2,8 +2,11 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 def load_memory(memory_file: Path) -> list[dict[str, Any]]:
@@ -16,7 +19,8 @@ def load_memory(memory_file: Path) -> list[dict[str, Any]]:
         return []
     try:
         return json.loads(memory_file.read_text(encoding="utf-8"))
-    except Exception:
+    except Exception as exc:
+        logger.warning("Memory file '%s' could not be parsed, starting fresh: %s", memory_file, exc)
         return []
 
 

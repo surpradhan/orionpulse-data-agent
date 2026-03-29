@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import logging
+import threading
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -12,6 +14,9 @@ import seaborn as sns
 from .analytics import anomaly_detection, forecast_metric, kpi_summary
 from .config import settings
 from .db import query_df
+
+logger = logging.getLogger(__name__)
+_MANIFEST_LOCK = threading.Lock()
 
 CHART_DIR = Path("artifacts/charts")
 MANIFEST = CHART_DIR / "manifest.json"
@@ -33,15 +38,19 @@ def _init_chart_dir() -> None:
 
 def _register_chart(meta: dict[str, Any]) -> None:
     _init_chart_dir()
-    if MANIFEST.exists():
-        try:
-            manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
-        except Exception:
+    with _MANIFEST_LOCK:
+        if MANIFEST.exists():
+            try:
+                manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
+            except Exception as exc:
+                logger.warning(
+                    "Chart manifest '%s' could not be parsed, resetting: %s", MANIFEST, exc
+                )
+                manifest = []
+        else:
             manifest = []
-    else:
-        manifest = []
-    manifest.append(meta)
-    MANIFEST.write_text(json.dumps(manifest[-200:], indent=2), encoding="utf-8")
+        manifest.append(meta)
+        MANIFEST.write_text(json.dumps(manifest[-200:], indent=2), encoding="utf-8")
 
 
 def _save_plot(fig, base_name: str, fmt: str = "png") -> str:

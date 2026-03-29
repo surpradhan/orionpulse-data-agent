@@ -7,6 +7,7 @@ artifact emission for debugging/operations.
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -22,6 +23,8 @@ from .planner_contracts import validate_critique, validate_planner_plan, validat
 from .specs import dashboard_spec, storyboard_spec
 from .tool_registry import build_tool_registry
 from .visualization import generate_insight_pack
+
+logger = logging.getLogger(__name__)
 
 SKILLS_DIR = Path("skills")
 MEMORY_FILE = Path("data/agent_memory.json")
@@ -57,6 +60,7 @@ class OrionAgent:
 
     def __init__(self) -> None:
         self.skills = _load_skills_context()
+        self._tools = build_tool_registry()
 
     def _trace_enabled(self) -> bool:
         """Return whether JSON trace artifacts should be written."""
@@ -135,7 +139,7 @@ class OrionAgent:
 
     def _tool_registry(self) -> dict[str, Any]:
         """Return callable registry used by LLM planner actions."""
-        return build_tool_registry()
+        return self._tools
 
     def _rule_based_answer(
         self, question: str, execution_mode: str = "deterministic"
@@ -426,6 +430,9 @@ class OrionAgent:
                     resp.fallback_reason = "LLM mode requested but LLM is not configured"
         except Exception as exc:
             # Safety fallback to deterministic path
+            logger.error(
+                "Agent orchestration failed, falling back to rule-based: %s", exc, exc_info=True
+            )
             resp = self._rule_based_answer(question, execution_mode="fallback_rule_based")
             resp.fallback_reason = str(exc)
             trace_session["mode"] = "fallback_rule_based"

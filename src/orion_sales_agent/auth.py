@@ -1,6 +1,8 @@
 """Authentication and authorization helpers for web/API channels."""
 from __future__ import annotations
 
+import hmac
+
 from fastapi import HTTPException
 
 from .config import auth_tokens_configured, settings
@@ -29,13 +31,13 @@ def require_role(x_orion_token: str | None, required_role: str) -> None:
         return
 
     if required_role == "analyst":
-        if settings.analyst_token and token == settings.analyst_token:
+        if settings.analyst_token and hmac.compare_digest(token, settings.analyst_token):
             return
-        if settings.admin_token and token == settings.admin_token:
+        if settings.admin_token and hmac.compare_digest(token, settings.admin_token):
             return
         raise HTTPException(status_code=401, detail="Unauthorized: analyst token required")
     if required_role == "admin":
-        if settings.admin_token and token == settings.admin_token:
+        if settings.admin_token and hmac.compare_digest(token, settings.admin_token):
             return
         raise HTTPException(status_code=403, detail="Forbidden: admin token required")
     raise HTTPException(status_code=500, detail="Invalid role requirement")
