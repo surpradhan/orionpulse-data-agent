@@ -23,25 +23,35 @@ It supports:
 
 ```bash
 python -m venv .venv
+# macOS / Linux
+source .venv/bin/activate
+# Windows
 .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-2) Initialize data and views
+2) Configure environment variables
+
+```bash
+cp .env.example .env
+# Edit .env — at minimum set ORION_LLM_API_KEY if using LLM mode
+```
+
+3) Initialize data and views
 
 ```bash
 python data/init_db.py
 python -c "from src.orion_sales_agent.views import apply_views; from src.orion_sales_agent.config import settings; apply_views(settings.db_path); print('views applied')"
 ```
 
-3) Run services
+4) Run services
 
 ```bash
 python mcp_server/server.py
 python -m uvicorn src.orion_sales_agent.webapp:app --reload
 ```
 
-4) Try CLI
+5) Try CLI
 
 ```bash
 python scripts/ask_agent.py --question "forecast next months revenue" --format json
@@ -121,12 +131,22 @@ pytest
 
 ## Documentation map
 
-- Architecture and strategy: `docs/MASTER_PLAN.md`
-- Data model/KPIs: `docs/DATA_MODEL_AND_KPIS.md`
-- Ops runbook: `docs/OPERATIONS_RUNBOOK.md`
-- Channel error semantics: `docs/CHANNEL_ERROR_CONTRACTS.md`
-- MCP response contract decision: `docs/MCP_RESPONSE_CONTRACT_DECISION.md`
-- Analytics exports: `docs/ANALYTICS_EXPORT_GUIDE.md`
+| Topic | Document |
+|-------|----------|
+| Architecture and strategy | `docs/MASTER_PLAN.md` |
+| Implementation roadmap | `docs/IMPLEMENTATION_ROADMAP.md` |
+| Data model and KPIs | `docs/DATA_MODEL_AND_KPIS.md` |
+| **API endpoint reference** | `docs/API_REFERENCE.md` |
+| Interaction modes (MCP / CLI / Web) | `docs/INTERACTION_MODES.md` |
+| Execution mode policy | `docs/ENGINEERING_EXECUTION_MODE_POLICY.md` |
+| Auth profiles and security | `SECURITY.md` |
+| Ops runbook | `docs/OPERATIONS_RUNBOOK.md` |
+| Channel error semantics | `docs/CHANNEL_ERROR_CONTRACTS.md` |
+| MCP response contract decision | `docs/MCP_RESPONSE_CONTRACT_DECISION.md` |
+| Analytics exports | `docs/ANALYTICS_EXPORT_GUIDE.md` |
+| **Visualization and charts** | `docs/VISUALIZATION_GUIDE.md` |
+| **Forecast methodology** | `docs/FORECAST_METHODOLOGY.md` |
+| Full doc index and governance | `docs/INDEX.md` |
 
 ## Project layout
 
