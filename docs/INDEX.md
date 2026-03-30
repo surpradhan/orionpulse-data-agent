@@ -30,6 +30,7 @@ This index defines **ownership**, **purpose**, and **update cadence** for every 
 | `docs/TECHNICAL_REVIEW_2026-03-01.md` | Product/Engineering Lead | Point-in-time technical review findings and recommendations | Immutable historical snapshot; add new dated file for future reviews |
 | `docs/UI_REALTIME_TEST_CASES.md` | QA/Release Engineer | Real-time UI/API validation scenarios and evidence expectations | On auth/contract/test-scope changes |
 | `docs/VISUALIZATION_GUIDE.md` | Backend/API Engineer | Chart types, output formats, artifact layout, and programmatic usage | On changes to chart types, output paths, or visualization API |
+| `docs/TEST_STRATEGY.md` | QA/Release Engineer | Test file inventory, coverage matrix by module, fixture guide, and recommended next tests | When new test files are added or coverage gaps are closed |
 | `docs/INDEX.md` | Product/Engineering Lead | This governance index for ownership + purpose + cadence | Review monthly or when docs are added/removed |
 
 ## Governance rules

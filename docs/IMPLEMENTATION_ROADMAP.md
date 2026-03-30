@@ -83,8 +83,8 @@
 | 5.5 | `docs/API_REFERENCE.md` — endpoint-by-endpoint contract (auth, params, response) | ✅ |
 | 5.6 | `docs/VISUALIZATION_GUIDE.md` — chart generation and artifact layout | ✅ |
 | 5.7 | `docs/FORECAST_METHODOLOGY.md` — method selection, diagnostics, confidence bands | ✅ |
-| 5.8 | Expand `prompt_templates.md` with filled examples | 📋 |
-| 5.9 | `docs/TEST_STRATEGY.md` — coverage matrix by module | 📋 |
+| 5.8 | Expand `prompt_templates.md` with filled examples | ✅ |
+| 5.9 | `docs/TEST_STRATEGY.md` — coverage matrix by module | ✅ |
 
 ---
 
