@@ -10,8 +10,22 @@
       .row { display: flex; gap: 12px; align-items: center; margin-top: 10px; flex-wrap: wrap; }
       button { background: #1f6feb; color: #fff; border: 0; border-radius: 8px; padding: 9px 14px; cursor: pointer; }
       button:disabled { opacity: 0.6; cursor: not-allowed; }
-      .out { white-space: pre-wrap; background: #0b1020; color: #d9e0ff; border-radius: 8px; padding: 12px; margin-top: 14px; max-height: 420px; overflow: auto; }
       .muted { color: #566076; font-size: 13px; }
+      .thread { display: flex; flex-direction: column; gap: 16px; margin-top: 16px; }
+      .bubble-q { align-self: flex-end; background: #1f6feb; color: #fff; border-radius: 16px 16px 4px 16px; padding: 10px 14px; max-width: 80%; font-size: 14px; line-height: 1.4; }
+      .bubble-a { align-self: flex-start; background: #fff; border: 1px solid #e4e8f0; border-radius: 4px 16px 16px 16px; padding: 14px; width: 100%; box-sizing: border-box; }
+      .bubble-a h3 { margin: 0 0 6px; font-size: 14px; color: #566076; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+      .bubble-a p { margin: 0 0 10px; color: #2d3a4f; line-height: 1.5; }
+      .charts-grid { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; }
+      .chart-card { border: 1px solid #e4e8f0; border-radius: 8px; overflow: hidden; flex: 1 1 260px; }
+      .chart-card img { width: 100%; display: block; }
+      .chart-label { font-size: 11px; color: #566076; padding: 5px 8px; background: #f6f8fb; text-align: center; }
+      .followup { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 8px; }
+      .followup-chip { font-size: 13px; color: #1f6feb; background: #eef4ff; border: 1px solid #b6d0ff; border-radius: 20px; padding: 5px 12px; cursor: pointer; transition: background 0.15s, border-color 0.15s, color 0.15s; }
+      .followup-chip:hover { background: #d6e8ff; border-color: #1f6feb; }
+      .followup-chip.used { color: #999; background: #f4f4f4; border-color: #ddd; cursor: default; text-decoration: line-through; pointer-events: none; }
+      .raw-toggle { font-size: 12px; color: #888; cursor: pointer; margin-top: 10px; display: inline-block; }
+      .raw-json { display: none; white-space: pre-wrap; background: #0b1020; color: #d9e0ff; border-radius: 8px; padding: 12px; margin-top: 8px; max-height: 300px; overflow: auto; font-size: 12px; }
     </style>
   </head>
   <body>
@@ -47,7 +61,7 @@
         <div class='row'>
           <span id='warningInfo' class='muted'>Warnings: none</span>
         </div>
-        <div id='out' class='out'>Response will appear here...</div>
+        <div id='thread' class='thread'></div>
       </div>
     </div>
     <script>
@@ -128,17 +142,47 @@
         speechSynthesis.speak(utt);
       }
 
+      function useFollowup(text, el) {
+        if (el) {
+          el.classList.add('used');
+          el.textContent = '✓ ' + text;
+        }
+        document.getElementById('q').value = text;
+        askAgent();
+      }
+
+      // Safe DOM builder: creates an element, optionally sets a class and text content.
+      function el(tag, cls, text) {
+        const node = document.createElement(tag);
+        if (cls) node.className = cls;
+        if (text !== undefined && text !== null) node.textContent = text;
+        return node;
+      }
+
       async function askAgent() {
         const q = document.getElementById('q').value.trim();
         const withVisuals = document.getElementById('withVisuals').checked;
         const withBI = document.getElementById('withBI').checked;
         const autoSpeak = document.getElementById('autoSpeak').checked;
         const fmt = document.getElementById('fmt').value;
-        const out = document.getElementById('out');
+        const thread = document.getElementById('thread');
         const btn = document.getElementById('askBtn');
-        if (!q) { out.textContent = 'Please enter a question.'; return; }
+        if (!q) return;
+
+        // Append user bubble
+        const qBubble = el('div', 'bubble-q', q);
+        thread.appendChild(qBubble);
+
+        // Append thinking placeholder
+        const aBubble = el('div', 'bubble-a');
+        const thinkingP = el('p', 'muted', 'Thinking…');
+        aBubble.appendChild(thinkingP);
+        thread.appendChild(aBubble);
+        aBubble.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
         btn.disabled = true;
-        out.textContent = 'Thinking...';
+        document.getElementById('q').value = '';
+
         try {
           const resp = await fetch('/chat', {
             method: 'POST',
@@ -146,16 +190,77 @@
             body: JSON.stringify({ q, with_visuals: withVisuals, with_bi: withBI, fmt })
           });
           const data = await resp.json();
-          out.textContent = JSON.stringify(data, null, 2);
           const modeText = data?.execution_mode || '-';
           const fallback = data?.fallback_reason || 'none';
           const warnings = Array.isArray(data?.warnings) ? data.warnings : [];
           document.getElementById('modeInfo').textContent = `Mode: ${modeText}`;
           document.getElementById('fallbackInfo').textContent = `Fallback: ${fallback}`;
           document.getElementById('warningInfo').textContent = `Warnings: ${warnings.length ? warnings.join(' | ') : 'none'}`;
-          if (autoSpeak && data && data.data && data.data.answer) speakText(data.data.answer);
+
+          const inner = data?.data || {};
+          const answer = inner.answer || '';
+          const visuals = inner.visuals?.visuals || [];
+          const followups = inner.followups || [];
+
+          // Clear the thinking placeholder
+          aBubble.textContent = '';
+
+          // Answer section — textContent prevents HTML injection
+          if (answer) {
+            aBubble.appendChild(el('h3', null, 'Answer'));
+            aBubble.appendChild(el('p', null, answer));
+          }
+
+          // Charts grid — img src/alt set via properties, label via textContent
+          if (visuals.length) {
+            aBubble.appendChild(el('h3', null, 'Charts'));
+            const grid = el('div', 'charts-grid');
+            visuals.forEach(v => {
+              const card = el('div', 'chart-card');
+              const img = document.createElement('img');
+              img.src = '/' + String(v.path || '').replace(/\\/g, '/');
+              img.alt = String(v.chart_type || '').replace(/_/g, ' ');
+              const lbl = el('div', 'chart-label', img.alt);
+              card.appendChild(img);
+              card.appendChild(lbl);
+              grid.appendChild(card);
+            });
+            aBubble.appendChild(grid);
+          }
+
+          // Follow-up chips — text set via textContent, click via addEventListener
+          if (followups.length) {
+            const chipRow = el('div', 'followup');
+            followups.forEach(f => {
+              const chip = el('span', 'followup-chip', '💡 ' + f);
+              chip.addEventListener('click', function() { useFollowup(f, this); });
+              chipRow.appendChild(chip);
+            });
+            aBubble.appendChild(chipRow);
+          }
+
+          // Raw JSON toggle — JSON.stringify output set via textContent
+          const rawId = 'raw-' + Date.now();
+          const toggle = el('span', 'raw-toggle', '▶ Show raw JSON');
+          toggle.addEventListener('click', function() {
+            const pre = document.getElementById(rawId);
+            pre.style.display = pre.style.display === 'none' ? 'block' : 'none';
+          });
+          const rawPre = el('pre', 'raw-json');
+          rawPre.id = rawId;
+          rawPre.style.display = 'none';
+          rawPre.textContent = JSON.stringify(data, null, 2);
+          aBubble.appendChild(toggle);
+          aBubble.appendChild(rawPre);
+
+          aBubble.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+          if (autoSpeak && answer) speakText(answer);
         } catch (e) {
-          out.textContent = 'Error: ' + e;
+          aBubble.textContent = '';
+          const errP = el('p', null, 'Error: ' + e);
+          errP.style.color = '#c0392b';
+          aBubble.appendChild(errP);
         } finally {
           btn.disabled = false;
         }

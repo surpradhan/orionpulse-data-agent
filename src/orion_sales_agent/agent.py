@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -28,6 +29,30 @@ logger = logging.getLogger(__name__)
 
 SKILLS_DIR = Path(settings.skills_dir)
 MEMORY_FILE = Path(settings.memory_file)
+
+_HTML_TAG_RE = re.compile(r"<[^>]{0,200}>")
+
+
+def _sanitize_text(text: str | None) -> str | None:
+    """Strip HTML/script tags from LLM-generated text to prevent XSS injection.
+
+    Applied to all LLM-produced answer strings before they leave the agent
+    layer. Uses a bounded regex so pathologically long tag-like strings cannot
+    cause catastrophic backtracking.
+
+    Args:
+        text: Raw string from LLM or synthesizer, may be None.
+
+    Returns:
+        Sanitized string with HTML tags removed, or the original value when
+        ``text`` is None/empty (preserving falsy semantics for callers).
+    """
+    if not text:
+        return text
+    cleaned = _HTML_TAG_RE.sub("", text)
+    # Collapse runs of whitespace introduced by tag removal
+    cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
+    return cleaned.strip()
 
 
 def _load_skills_context() -> dict[str, str]:
@@ -158,14 +183,14 @@ class OrionAgent:
 
         if intent == "forecast":
             data = forecast_metric(settings.db_path, horizon=settings.default_forecast_horizon)
-            answer = "Generated forward forecast with assumptions and recent trend context."
+            answer = self._synthesize_forecast_answer(question, data)
             followups = [
                 "Do you want forecast split by region?",
                 "Should I compare forecast vs last year?",
             ]
         elif intent == "anomaly":
             data = anomaly_detection(settings.db_path)
-            answer = "Detected significant outlier periods using z-score thresholding."
+            answer = self._synthesize_anomaly_answer(question, data)
             followups = ["Should I explain probable drivers for each anomaly?"]
         elif intent == "dashboard":
             data = dashboard_spec()
@@ -179,13 +204,18 @@ class OrionAgent:
             followups = ["Should I tailor this for CFO audience?"]
         elif intent == "root_cause":
             data = self._root_cause_pack()
-            answer = (
-                "Prepared multi-step driver analysis pack across region, product, and anomalies."
-            )
+            answer = self._synthesize_root_cause_answer(question, data)
             followups = ["Want me to convert this into action recommendations?"]
+        elif intent == "region":
+            data = self._region_pack()
+            answer = self._synthesize_region_answer(question, data)
+            followups = [
+                "Want a forecast for the top-performing region?",
+                "Should I break this down by product within each region?",
+            ]
         elif intent == "kpi":
             data = kpi_summary(settings.db_path)
-            answer = "Computed KPI summary across available periods."
+            answer = self._synthesize_kpi_answer(question, data)
             followups = ["Need quarter-over-quarter or YoY comparison?"]
         elif (
             "chart" in question.lower()
@@ -280,7 +310,7 @@ class OrionAgent:
             if plan.get("final"):
                 return AgentResponse(
                     intent="llm_dynamic",
-                    answer=str(plan.get("final_answer", "Generated final response.")),
+                    answer=_sanitize_text(str(plan.get("final_answer", "Generated final response."))),
                     data={"observations": observations},
                     reasoning_summary=reasoning,
                     followups=plan.get("followups", []),
@@ -363,7 +393,7 @@ class OrionAgent:
         )
         return AgentResponse(
             intent="llm_dynamic",
-            answer=str(synth.get("answer", "Completed multi-hop analysis.")),
+            answer=_sanitize_text(str(synth.get("answer", "Completed multi-hop analysis."))),
             data={"observations": observations},
             reasoning_summary=reasoning,
             followups=synth.get("followups", []),
@@ -383,9 +413,244 @@ class OrionAgent:
             return "storyboard"
         if "root cause" in q or "why" in q or "driver" in q:
             return "root_cause"
+        if (
+            "region" in q
+            or "leaderboard" in q
+            or "compare" in q
+            or "breakdown" in q
+            or "ranking" in q
+            or "by region" in q
+            or "by country" in q
+            or "by channel" in q
+            or "product" in q
+            or "top product" in q
+            or "margin rank" in q
+        ):
+            return "region"
         if "kpi" in q or "summary" in q or "performance" in q:
             return "kpi"
         return "general"
+
+    def _region_pack(self) -> dict:
+        """Build ranked region + product data for leaderboard / comparison questions."""
+        regions = query_df(
+            settings.db_path,
+            """
+            SELECT region_name, country, sales_channel,
+                   SUM(net_revenue) AS net_revenue,
+                   SUM(margin)      AS margin,
+                   SUM(units_sold)  AS units_sold,
+                   AVG(margin_pct)  AS margin_pct
+            FROM vw_region_performance
+            GROUP BY region_name, country, sales_channel
+            ORDER BY net_revenue DESC
+            """,
+        ).to_dict(orient="records")
+        products = query_df(
+            settings.db_path,
+            "SELECT * FROM vw_product_margin_rank ORDER BY margin_pct DESC",
+        ).to_dict(orient="records")
+        return {"regions": regions, "products": products}
+
+    def _synthesize_region_answer(self, question: str, data: dict) -> str:
+        """Turn the region pack into a plain-English ranked summary."""
+        regions: list[dict] = data.get("regions", [])
+        products: list[dict] = data.get("products", [])
+        q_lower = question.lower()
+
+        parts: list[str] = []
+
+        if regions:
+            sorted_rev = sorted(regions, key=lambda r: r["net_revenue"], reverse=True)
+            sorted_margin = sorted(regions, key=lambda r: r["margin_pct"], reverse=True)
+            leader = sorted_rev[0]
+            trailer = sorted_rev[-1]
+
+            # Revenue leaderboard
+            rank_lines = "  |  ".join(
+                f"#{i+1} {r['region_name']} ${r['net_revenue']:,.0f}"
+                for i, r in enumerate(sorted_rev)
+            )
+            parts.append(f"Revenue leaderboard: {rank_lines}.")
+
+            # Gap between top and bottom
+            gap_pct = (leader["net_revenue"] - trailer["net_revenue"]) / leader["net_revenue"] * 100
+            parts.append(
+                f"{leader['region_name']} leads at ${leader['net_revenue']:,.0f} "
+                f"({leader['units_sold']:,} units, {leader['sales_channel']} channel); "
+                f"{trailer['region_name']} trails by {gap_pct:.1f}%."
+            )
+
+            # Margin leader vs revenue leader
+            margin_leader = sorted_margin[0]
+            if margin_leader["region_name"] != leader["region_name"]:
+                parts.append(
+                    f"Note: {margin_leader['region_name']} tops on margin rate "
+                    f"({margin_leader['margin_pct']*100:.1f}%) even though "
+                    f"{leader['region_name']} wins on revenue — "
+                    f"different regions lead on volume vs. profitability."
+                )
+            else:
+                parts.append(
+                    f"{margin_leader['region_name']} leads on both revenue and margin rate "
+                    f"({margin_leader['margin_pct']*100:.1f}%), making it the strongest region overall."
+                )
+
+        # Product angle if question mentions products/margin
+        if products and ("product" in q_lower or "margin" in q_lower or "rank" in q_lower):
+            top_p = products[0]
+            low_p = products[-1]
+            parts.append(
+                f"Top product by margin: '{top_p['product_name']}' ({top_p['category']}) "
+                f"at {top_p['margin_pct']*100:.1f}% on ${top_p['net_revenue']:,.0f} revenue. "
+                f"Lowest: '{low_p['product_name']}' at {low_p['margin_pct']*100:.1f}%."
+            )
+
+        return " ".join(parts)
+
+    def _synthesize_forecast_answer(self, question: str, data: dict) -> str:
+        """Turn forecast data into a plain-English answer."""
+        pts = data.get("forecast", [])
+        diag = data.get("diagnostics", {})
+        metric = data.get("metric", "net_revenue").replace("_", " ")
+        q_lower = question.lower()
+
+        parts: list[str] = []
+
+        # Resolve which region the question refers to
+        region_hint = next(
+            (r for r in ["NA", "APAC", "EMEA", "LATAM"] if r.lower() in q_lower),
+            None,
+        )
+        # Resolve semantic references like "top-performing", "best", "leading"
+        if not region_hint and any(
+            kw in q_lower for kw in ["top", "best", "leading", "highest", "number one", "#1"]
+        ):
+            try:
+                top = query_df(
+                    settings.db_path,
+                    "SELECT region_name, SUM(net_revenue) AS rev FROM vw_region_performance "
+                    "GROUP BY region_name ORDER BY rev DESC LIMIT 1",
+                ).iloc[0]
+                region_hint = top["region_name"]
+                parts.append(
+                    f"The top-performing region by revenue is {region_hint} "
+                    f"(${top['rev']:,.0f} total). "
+                    f"Region-level forecasting is not yet supported, so the forecast below "
+                    f"covers overall net revenue as the best available proxy for {region_hint}."
+                )
+            except Exception:
+                pass
+        elif region_hint:
+            parts.append(
+                f"Note: region-level forecasting is not yet supported — "
+                f"showing overall {metric} forecast as the best available proxy for {region_hint}."
+            )
+        scope = f"{region_hint} " if region_hint else ""
+
+        if pts:
+            first, last = pts[0], pts[-1]
+            trend = "flat" if abs(last["value"] - first["value"]) / first["value"] < 0.02 else (
+                "upward" if last["value"] > first["value"] else "downward"
+            )
+            parts.append(
+                f"The {scope}{metric} forecast shows a {trend} trend over the next {len(pts)} months: "
+                + ", ".join(f"{p['period']} ${p['value']:,.0f}" for p in pts) + "."
+            )
+            parts.append(
+                f"95% confidence band widens to ${pts[-1]['lower']:,.0f}–${pts[-1]['upper']:,.0f} "
+                f"by {pts[-1]['period']}."
+            )
+
+        if diag:
+            mape = diag.get("mape")
+            method = diag.get("method", "").replace("_", " ")
+            quality = "excellent" if mape and mape < 5 else "good" if mape and mape < 10 else "moderate"
+            if mape:
+                parts.append(
+                    f"Model: {method}, MAPE {mape:.1f}% ({quality} fit), "
+                    f"selected over {len(diag.get('candidates', []))} candidate(s) by backtest RMSE."
+                )
+
+        return " ".join(parts)
+
+    def _synthesize_anomaly_answer(self, question: str, data: list) -> str:
+        """Turn anomaly detection results into a plain-English answer."""
+        if not data:
+            return (
+                "No anomalies detected in net revenue at the configured z-score threshold — "
+                "the series looks statistically clean."
+            )
+        parts: list[str] = []
+        parts.append(f"{len(data)} anomalous period(s) detected:")
+        for a in data:
+            direction = "above" if a["zscore"] > 0 else "below"
+            severity = "strong" if abs(a["zscore"]) > 3 else "moderate"
+            parts.append(
+                f"{a['period']}: ${a['value']:,.0f} — {severity} {direction}-mean spike "
+                f"(z={a['zscore']:.2f})."
+            )
+        if len(data) == 1:
+            parts.append(
+                "A single outlier is unlikely to indicate a systemic issue — "
+                "check for one-off deals, data errors, or seasonal effects in that month."
+            )
+        else:
+            parts.append(
+                "Multiple anomalies may suggest a recurring seasonal pattern or a data quality issue worth investigating."
+            )
+        return " ".join(parts)
+
+    def _synthesize_kpi_answer(self, question: str, data: dict) -> str:
+        """Turn KPI summary data into a plain-English answer."""
+        if not data:
+            return "KPI summary computed — no data returned."
+
+        parts: list[str] = []
+
+        # data is a dict keyed by period or a list — handle both
+        rows = data if isinstance(data, list) else (
+            list(data.values()) if isinstance(data, dict) else []
+        )
+
+        if rows:
+            # sort by period if possible
+            try:
+                rows = sorted(rows, key=lambda r: r.get("period", ""))
+            except Exception:
+                pass
+
+            latest = rows[-1] if rows else {}
+            earliest = rows[0] if rows else {}
+
+            rev_key = next((k for k in latest if "revenue" in k.lower()), None)
+            margin_key = next((k for k in latest if "margin_pct" in k.lower() or "margin_%" in k.lower()), None)
+            period_key = next((k for k in latest if "period" in k.lower()), None)
+
+            if rev_key and period_key:
+                latest_rev = latest.get(rev_key, 0)
+                earliest_rev = earliest.get(rev_key, 0)
+                pct_change = ((latest_rev - earliest_rev) / earliest_rev * 100) if earliest_rev else 0
+                direction = "up" if pct_change > 0 else "down"
+                parts.append(
+                    f"Latest period ({latest.get(period_key, '?')}): "
+                    f"net revenue ${latest_rev:,.0f} — "
+                    f"{direction} {abs(pct_change):.1f}% vs. the start of the tracked window "
+                    f"({earliest.get(period_key, '?')}: ${earliest_rev:,.0f})."
+                )
+
+            if margin_key:
+                margins = [r.get(margin_key, 0) for r in rows if r.get(margin_key) is not None]
+                if margins:
+                    avg_m = sum(margins) / len(margins)
+                    parts.append(
+                        f"Average margin rate across {len(rows)} periods: {avg_m*100:.1f}%."
+                    )
+
+        if not parts:
+            parts.append(f"KPI summary computed across {len(rows)} periods.")
+
+        return " ".join(parts)
 
     def _root_cause_pack(self) -> dict:
         """Build a multi-source driver pack for root-cause style questions."""
@@ -399,6 +664,77 @@ class OrionAgent:
         ).to_dict(orient="records")
         anomalies = anomaly_detection(settings.db_path)
         return {"region_drivers": region, "product_drivers": product, "anomalies": anomalies}
+
+    def _synthesize_root_cause_answer(self, question: str, data: dict) -> str:
+        """Turn the root-cause data pack into a plain-English answer."""
+        regions: list[dict] = data.get("region_drivers", [])
+        products: list[dict] = data.get("product_drivers", [])
+        anomalies: list[dict] = data.get("anomalies", [])
+
+        # --- detect which region the question is about ---
+        q_lower = question.lower()
+        focus_region = next(
+            (r["region_name"] for r in regions if r["region_name"].lower() in q_lower),
+            None,
+        )
+
+        parts: list[str] = []
+
+        if focus_region and regions:
+            sorted_regions = sorted(regions, key=lambda r: r["margin_pct"], reverse=True)
+            focus = next((r for r in regions if r["region_name"] == focus_region), None)
+            top = sorted_regions[0]
+            if focus:
+                gap_pp = (top["margin_pct"] - focus["margin_pct"]) * 100
+                rank = sorted_regions.index(focus) + 1
+                parts.append(
+                    f"{focus_region} margin sits at {focus['margin_pct']*100:.1f}% "
+                    f"(#{rank} of {len(regions)}), trailing {top['region_name']} "
+                    f"({top['margin_pct']*100:.1f}%) by {gap_pp:.1f} percentage points."
+                )
+                # revenue context
+                parts.append(
+                    f"Revenue is healthy at ${focus['net_revenue']:,.0f} "
+                    f"({focus['units_sold']:,} units via {focus['sales_channel']} channel), "
+                    f"so the gap is a rate issue, not a volume problem."
+                )
+        elif regions:
+            sorted_regions = sorted(regions, key=lambda r: r["margin_pct"], reverse=True)
+            top, bottom = sorted_regions[0], sorted_regions[-1]
+            gap_pp = (top["margin_pct"] - bottom["margin_pct"]) * 100
+            parts.append(
+                f"Margin ranges from {bottom['margin_pct']*100:.1f}% ({bottom['region_name']}) "
+                f"to {top['margin_pct']*100:.1f}% ({top['region_name']}), "
+                f"a spread of {gap_pp:.1f} percentage points."
+            )
+
+        # --- product mix driver ---
+        if products:
+            sorted_prods = sorted(products, key=lambda p: p["margin_pct"])
+            low_p = sorted_prods[0]
+            high_p = sorted_prods[-1]
+            parts.append(
+                f"The primary product driver is mix: '{high_p['product_name']}' "
+                f"({high_p['category']}) leads at {high_p['margin_pct']*100:.1f}% margin, "
+                f"while '{low_p['product_name']}' ({low_p['category']}) trails "
+                f"at {low_p['margin_pct']*100:.1f}%. "
+                f"If {focus_region or 'the lagging region'} skews toward lower-margin SKUs, "
+                f"that alone explains the gap."
+            )
+
+        # --- anomaly context ---
+        if anomalies:
+            a = anomalies[0]
+            direction = "spike" if a["zscore"] > 0 else "dip"
+            parts.append(
+                f"Note: {a['period']} shows a revenue {direction} "
+                f"(z={a['zscore']:.2f}, value=${a['value']:,.0f}) — "
+                f"this is a one-period outlier, not a sustained margin trend."
+            )
+        else:
+            parts.append("No statistical anomalies detected — the margin gap is structural, not event-driven.")
+
+        return " ".join(parts)
 
     def answer(self, question: str, mode: str = "auto") -> AgentResponse:
         """Main entrypoint for agent responses.
