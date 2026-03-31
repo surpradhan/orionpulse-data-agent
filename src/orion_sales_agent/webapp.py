@@ -5,12 +5,15 @@ standardization, and a lightweight built-in HTML chat UI.
 """
 from __future__ import annotations
 
+import threading
+import time
+from collections import deque
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import FastAPI, Header, Query
+from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -23,10 +26,47 @@ from .api_models import (
     ChatEnvelope,
     ChatPayload,
     ForecastEnvelope,
+    HealthEnvelope,
     KpiEnvelope,
 )
 from .auth import require_role
 from .config import settings, validate_auth_configuration
+
+# ---------------------------------------------------------------------------
+# Token-bucket rate limiter (stdlib only — no extra deps)
+# ---------------------------------------------------------------------------
+# Allows up to RATE_LIMIT_REQUESTS requests per RATE_LIMIT_WINDOW_SECONDS
+# per client IP.  Uses a deque of timestamps — O(1) amortised per request.
+_RATE_LIMIT_REQUESTS: int = 30
+_RATE_LIMIT_WINDOW_SECONDS: float = 60.0
+_rate_buckets: dict[str, deque] = {}
+_rate_lock = threading.Lock()
+
+
+def _check_rate_limit(client_ip: str) -> None:
+    """Raise HTTP 429 if *client_ip* exceeds the request rate limit.
+
+    Thread-safe via a module-level lock; does not require any external
+    dependency beyond stdlib.
+    """
+    now = time.monotonic()
+    cutoff = now - _RATE_LIMIT_WINDOW_SECONDS
+    with _rate_lock:
+        if client_ip not in _rate_buckets:
+            _rate_buckets[client_ip] = deque()
+        bucket = _rate_buckets[client_ip]
+        # Evict timestamps outside the window
+        while bucket and bucket[0] < cutoff:
+            bucket.popleft()
+        if len(bucket) >= _RATE_LIMIT_REQUESTS:
+            raise HTTPException(
+                status_code=429,
+                detail=(
+                    f"Rate limit exceeded: max {_RATE_LIMIT_REQUESTS} requests "
+                    f"per {int(_RATE_LIMIT_WINDOW_SECONDS)}s"
+                ),
+            )
+        bucket.append(now)
 
 
 def _startup_auth_guard() -> None:
@@ -97,6 +137,27 @@ def home() -> str:
     return HOME_TEMPLATE.read_text(encoding="utf-8")
 
 
+@app.get("/health", response_model=HealthEnvelope)
+def health() -> dict:
+    """Liveness probe — returns service version and uptime timestamp.
+
+    No authentication required so load-balancers and container orchestrators
+    can call it freely.
+    """
+    return {
+        "status": "ok",
+        "trace_id": f"orion-{uuid4().hex[:12]}",
+        "timestamp": datetime.now(UTC).isoformat(),
+        "warnings": [],
+        "data": {
+            "service": "orionpulse-data-agent",
+            "version": "1.1.0",
+            "db_path": str(settings.db_path),
+            "llm_enabled": bool(settings.llm_api_key.strip()),
+        },
+    }
+
+
 def _chat_impl(payload: ChatPayload, x_orion_token: str | None) -> dict:
     """Shared implementation for chat endpoints and versioned aliases."""
 
@@ -116,7 +177,7 @@ def _chat_impl(payload: ChatPayload, x_orion_token: str | None) -> dict:
         "followups": resp.followups,
     }
 
-    if with_visuals:
+    if with_visuals and resp.intent != "general":
         from .visualization import generate_insight_pack
 
         vfmt = fmt if fmt in {"png", "svg"} else "png"
@@ -133,12 +194,22 @@ def _chat_impl(payload: ChatPayload, x_orion_token: str | None) -> dict:
 
 
 @app.post("/chat", response_model=ChatEnvelope)
-def chat(payload: ChatPayload, x_orion_token: str | None = Header(default=None)) -> dict:
+def chat(
+    payload: ChatPayload,
+    request: Request,
+    x_orion_token: str | None = Header(default=None),
+) -> dict:
+    _check_rate_limit(request.client.host if request.client else "unknown")
     return _chat_impl(payload, x_orion_token)
 
 
 @app.post("/v1/chat", response_model=ChatEnvelope)
-def chat_v1(payload: ChatPayload, x_orion_token: str | None = Header(default=None)) -> dict:
+def chat_v1(
+    payload: ChatPayload,
+    request: Request,
+    x_orion_token: str | None = Header(default=None),
+) -> dict:
+    _check_rate_limit(request.client.host if request.client else "unknown")
     return _chat_impl(payload, x_orion_token)
 
 
@@ -199,7 +270,7 @@ def _ask_impl(q: str, x_orion_token: str | None) -> dict:
 
 @app.get("/ask", response_model=AskEnvelope)
 def ask(
-    q: str = Query(..., min_length=3, max_length=400),
+    q: str = Query(..., min_length=3, max_length=800),
     x_orion_token: str | None = Header(default=None),
 ):
     return _ask_impl(q, x_orion_token)
@@ -207,14 +278,14 @@ def ask(
 
 @app.get("/v1/ask", response_model=AskEnvelope)
 def ask_v1(
-    q: str = Query(..., min_length=3, max_length=400),
+    q: str = Query(..., min_length=3, max_length=800),
     x_orion_token: str | None = Header(default=None),
 ):
     return _ask_impl(q, x_orion_token)
 
 
 def _ask_with_visuals_impl(
-    q: str = Query(..., min_length=3, max_length=400),
+    q: str = Query(..., min_length=3, max_length=800),
     fmt: str = Query("png"),
     x_orion_token: str | None = None,
 ):
@@ -241,7 +312,7 @@ def _ask_with_visuals_impl(
 
 @app.get("/ask_with_visuals", response_model=AskWithVisualsEnvelope)
 def ask_with_visuals(
-    q: str = Query(..., min_length=3, max_length=400),
+    q: str = Query(..., min_length=3, max_length=800),
     fmt: str = Query("png"),
     x_orion_token: str | None = Header(default=None),
 ):
@@ -250,7 +321,7 @@ def ask_with_visuals(
 
 @app.get("/v1/ask_with_visuals", response_model=AskWithVisualsEnvelope)
 def ask_with_visuals_v1(
-    q: str = Query(..., min_length=3, max_length=400),
+    q: str = Query(..., min_length=3, max_length=800),
     fmt: str = Query("png"),
     x_orion_token: str | None = Header(default=None),
 ):
@@ -258,7 +329,7 @@ def ask_with_visuals_v1(
 
 
 def _ask_with_analytics_exports_impl(
-    q: str = Query(..., min_length=3, max_length=400),
+    q: str = Query(..., min_length=3, max_length=800),
     fmt: str = Query("csv"),
     x_orion_token: str | None = None,
 ):
@@ -284,7 +355,7 @@ def _ask_with_analytics_exports_impl(
 
 @app.get("/ask_with_analytics_exports", response_model=AskWithAnalyticsExportsEnvelope)
 def ask_with_analytics_exports(
-    q: str = Query(..., min_length=3, max_length=400),
+    q: str = Query(..., min_length=3, max_length=800),
     fmt: str = Query("csv"),
     x_orion_token: str | None = Header(default=None),
 ):
@@ -293,7 +364,7 @@ def ask_with_analytics_exports(
 
 @app.get("/v1/ask_with_analytics_exports", response_model=AskWithAnalyticsExportsEnvelope)
 def ask_with_analytics_exports_v1(
-    q: str = Query(..., min_length=3, max_length=400),
+    q: str = Query(..., min_length=3, max_length=800),
     fmt: str = Query("csv"),
     x_orion_token: str | None = Header(default=None),
 ):

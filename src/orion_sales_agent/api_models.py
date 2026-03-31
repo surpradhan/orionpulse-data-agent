@@ -67,13 +67,18 @@ class ForecastPayload(BaseModel):
 
 
 class AgentResultPayload(BaseModel):
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="forbid")
 
     intent: str
     answer: str
     reasoning_summary: list[str]
     data: Any
     followups: list[str]
+    # Optional fields added by specific endpoints
+    visuals: list[dict[str, Any]] | None = None
+    analytics_exports: dict[str, Any] | None = None
+    artifacts_base: str | None = None
+    semantic_specs_base: str | None = None
 
 
 class VisualsResultPayload(AgentResultPayload):
@@ -109,3 +114,16 @@ class AskWithVisualsEnvelope(ApiEnvelope):
 
 class AskWithAnalyticsExportsEnvelope(ApiEnvelope):
     data: AnalyticsExportsResultPayload
+
+
+class HealthData(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    service: str
+    version: str
+    db_path: str
+    llm_enabled: bool
+
+
+class HealthEnvelope(ApiEnvelope):
+    data: HealthData
