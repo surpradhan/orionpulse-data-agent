@@ -42,13 +42,36 @@ _RATE_LIMIT_WINDOW_SECONDS: float = 60.0
 _rate_buckets: dict[str, deque] = {}
 _rate_lock = threading.Lock()
 
+# How often (in requests) to sweep _rate_buckets for fully-drained entries.
+# Prevents unbounded memory growth when many unique IPs are seen over time.
+_RATE_BUCKET_SWEEP_INTERVAL: int = 500
+_rate_request_counter: int = 0
+
+
+def _client_ip(request: Request) -> str:
+    """Extract the real client IP, respecting common reverse-proxy headers.
+
+    Checks ``X-Forwarded-For`` (first entry) then ``X-Real-IP`` before
+    falling back to the direct connection address.  This ensures the rate
+    limiter works correctly behind nginx, CloudFront, or any load balancer.
+    """
+    forwarded_for = request.headers.get("x-forwarded-for")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+    real_ip = request.headers.get("x-real-ip")
+    if real_ip:
+        return real_ip.strip()
+    return request.client.host if request.client else "unknown"
+
 
 def _check_rate_limit(client_ip: str) -> None:
     """Raise HTTP 429 if *client_ip* exceeds the request rate limit.
 
     Thread-safe via a module-level lock; does not require any external
-    dependency beyond stdlib.
+    dependency beyond stdlib.  Periodically sweeps empty buckets to prevent
+    unbounded memory growth when many unique IPs are seen over a long uptime.
     """
+    global _rate_request_counter
     now = time.monotonic()
     cutoff = now - _RATE_LIMIT_WINDOW_SECONDS
     with _rate_lock:
@@ -67,6 +90,13 @@ def _check_rate_limit(client_ip: str) -> None:
                 ),
             )
         bucket.append(now)
+        # Periodic sweep: remove buckets whose windows have fully expired so
+        # the dict does not grow without bound across many unique source IPs.
+        _rate_request_counter += 1
+        if _rate_request_counter % _RATE_BUCKET_SWEEP_INTERVAL == 0:
+            stale = [ip for ip, b in _rate_buckets.items() if not b]
+            for ip in stale:
+                del _rate_buckets[ip]
 
 
 def _startup_auth_guard() -> None:
@@ -221,12 +251,14 @@ def _kpi_impl(x_orion_token: str | None) -> dict:
 
 
 @app.get("/kpi", response_model=KpiEnvelope)
-def kpi(x_orion_token: str | None = Header(default=None)) -> dict:
+def kpi(request: Request, x_orion_token: str | None = Header(default=None)) -> dict:
+    _check_rate_limit(_client_ip(request))
     return _kpi_impl(x_orion_token)
 
 
 @app.get("/v1/kpi", response_model=KpiEnvelope)
-def kpi_v1(x_orion_token: str | None = Header(default=None)) -> dict:
+def kpi_v1(request: Request, x_orion_token: str | None = Header(default=None)) -> dict:
+    _check_rate_limit(_client_ip(request))
     return _kpi_impl(x_orion_token)
 
 
@@ -242,12 +274,14 @@ def _forecast_impl(x_orion_token: str | None) -> dict:
 
 
 @app.get("/forecast", response_model=ForecastEnvelope)
-def forecast(x_orion_token: str | None = Header(default=None)) -> dict:
+def forecast(request: Request, x_orion_token: str | None = Header(default=None)) -> dict:
+    _check_rate_limit(_client_ip(request))
     return _forecast_impl(x_orion_token)
 
 
 @app.get("/v1/forecast", response_model=ForecastEnvelope)
-def forecast_v1(x_orion_token: str | None = Header(default=None)) -> dict:
+def forecast_v1(request: Request, x_orion_token: str | None = Header(default=None)) -> dict:
+    _check_rate_limit(_client_ip(request))
     return _forecast_impl(x_orion_token)
 
 
@@ -270,17 +304,21 @@ def _ask_impl(q: str, x_orion_token: str | None) -> dict:
 
 @app.get("/ask", response_model=AskEnvelope)
 def ask(
+    request: Request,
     q: str = Query(..., min_length=3, max_length=800),
     x_orion_token: str | None = Header(default=None),
 ):
+    _check_rate_limit(_client_ip(request))
     return _ask_impl(q, x_orion_token)
 
 
 @app.get("/v1/ask", response_model=AskEnvelope)
 def ask_v1(
+    request: Request,
     q: str = Query(..., min_length=3, max_length=800),
     x_orion_token: str | None = Header(default=None),
 ):
+    _check_rate_limit(_client_ip(request))
     return _ask_impl(q, x_orion_token)
 
 
@@ -312,19 +350,23 @@ def _ask_with_visuals_impl(
 
 @app.get("/ask_with_visuals", response_model=AskWithVisualsEnvelope)
 def ask_with_visuals(
+    request: Request,
     q: str = Query(..., min_length=3, max_length=800),
-    fmt: str = Query("png"),
+    fmt: str = Query("png", pattern="^(png|svg)$"),
     x_orion_token: str | None = Header(default=None),
 ):
+    _check_rate_limit(_client_ip(request))
     return _ask_with_visuals_impl(q=q, fmt=fmt, x_orion_token=x_orion_token)
 
 
 @app.get("/v1/ask_with_visuals", response_model=AskWithVisualsEnvelope)
 def ask_with_visuals_v1(
+    request: Request,
     q: str = Query(..., min_length=3, max_length=800),
-    fmt: str = Query("png"),
+    fmt: str = Query("png", pattern="^(png|svg)$"),
     x_orion_token: str | None = Header(default=None),
 ):
+    _check_rate_limit(_client_ip(request))
     return _ask_with_visuals_impl(q=q, fmt=fmt, x_orion_token=x_orion_token)
 
 
@@ -355,17 +397,21 @@ def _ask_with_analytics_exports_impl(
 
 @app.get("/ask_with_analytics_exports", response_model=AskWithAnalyticsExportsEnvelope)
 def ask_with_analytics_exports(
+    request: Request,
     q: str = Query(..., min_length=3, max_length=800),
-    fmt: str = Query("csv"),
+    fmt: str = Query("csv", pattern="^(csv|parquet)$"),
     x_orion_token: str | None = Header(default=None),
 ):
+    _check_rate_limit(_client_ip(request))
     return _ask_with_analytics_exports_impl(q=q, fmt=fmt, x_orion_token=x_orion_token)
 
 
 @app.get("/v1/ask_with_analytics_exports", response_model=AskWithAnalyticsExportsEnvelope)
 def ask_with_analytics_exports_v1(
+    request: Request,
     q: str = Query(..., min_length=3, max_length=800),
-    fmt: str = Query("csv"),
+    fmt: str = Query("csv", pattern="^(csv|parquet)$"),
     x_orion_token: str | None = Header(default=None),
 ):
+    _check_rate_limit(_client_ip(request))
     return _ask_with_analytics_exports_impl(q=q, fmt=fmt, x_orion_token=x_orion_token)
