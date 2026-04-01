@@ -3,11 +3,13 @@ from __future__ import annotations
 import json
 import logging
 import threading
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import matplotlib
+matplotlib.use("Agg")  # non-interactive backend — required for server/thread use on macOS
 import matplotlib.pyplot as plt
 import seaborn as sns
 
@@ -16,10 +18,20 @@ from .config import settings
 from .db import query_df
 
 logger = logging.getLogger(__name__)
-_MANIFEST_LOCK = threading.Lock()
+# Single lock guards both file I/O (savefig) and manifest updates to prevent
+# a race condition where two threads write partial files simultaneously.
+_CHART_LOCK = threading.Lock()
+# Keep _MANIFEST_LOCK as an alias for backwards compatibility with any
+# existing callers that imported it directly.
+_MANIFEST_LOCK = _CHART_LOCK
 
 CHART_DIR = Path("artifacts/charts")
 MANIFEST = CHART_DIR / "manifest.json"
+
+# Artifact TTL: chart files older than this many seconds are eligible for
+# pruning. Default 24 h; override via ORION_CHART_TTL_SECONDS env var if
+# settings grows that field later.
+_CHART_TTL_SECONDS: int = 86_400
 
 
 def set_test_safe_matplotlib_backend() -> None:
@@ -36,9 +48,42 @@ def _init_chart_dir() -> None:
     CHART_DIR.mkdir(parents=True, exist_ok=True)
 
 
+def _purge_old_charts(ttl_seconds: int = _CHART_TTL_SECONDS) -> int:
+    """Delete chart artifacts older than *ttl_seconds* and trim the manifest.
+
+    Must be called **inside** ``_CHART_LOCK`` to be thread-safe.
+
+    Returns:
+        Number of files removed.
+    """
+    cutoff = time.time() - ttl_seconds
+    removed = 0
+    try:
+        for p in CHART_DIR.glob("*.png"):
+            try:
+                if p.stat().st_mtime < cutoff:
+                    p.unlink(missing_ok=True)
+                    removed += 1
+            except OSError:
+                pass
+        for p in CHART_DIR.glob("*.svg"):
+            try:
+                if p.stat().st_mtime < cutoff:
+                    p.unlink(missing_ok=True)
+                    removed += 1
+            except OSError:
+                pass
+    except Exception as exc:
+        logger.warning("Chart purge error: %s", exc)
+    if removed:
+        logger.info("Purged %d expired chart artifact(s)", removed)
+    return removed
+
+
 def _register_chart(meta: dict[str, Any]) -> None:
+    """Register a chart entry in the manifest under ``_CHART_LOCK``."""
     _init_chart_dir()
-    with _MANIFEST_LOCK:
+    with _CHART_LOCK:
         if MANIFEST.exists():
             try:
                 manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
@@ -54,13 +99,20 @@ def _register_chart(meta: dict[str, Any]) -> None:
 
 
 def _save_plot(fig, base_name: str, fmt: str = "png") -> str:
+    """Save a matplotlib figure to disk and register it in the manifest.
+
+    The entire save + register sequence is performed inside ``_CHART_LOCK``
+    to prevent a race condition where concurrent requests produce partially
+    written files or corrupt the manifest.
+    """
     _init_chart_dir()
     ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
     file_name = f"{_safe_slug(base_name)}_{ts}.{fmt}"
     out = CHART_DIR / file_name
     fig.tight_layout()
-    fig.savefig(out, dpi=140)
-    plt.close(fig)
+    with _CHART_LOCK:
+        fig.savefig(out, dpi=140)
+        plt.close(fig)
     return str(out).replace("\\", "/")
 
 
@@ -197,7 +249,28 @@ def generate_chart(
     raise ValueError("Unsupported chart_type")
 
 
+def purge_old_charts(ttl_seconds: int = _CHART_TTL_SECONDS) -> int:
+    """Public API: delete chart artifacts older than *ttl_seconds*.
+
+    Acquires ``_CHART_LOCK`` to prevent concurrent access to the file system
+    during housekeeping.
+
+    Returns:
+        Number of artifact files removed.
+    """
+    with _CHART_LOCK:
+        return _purge_old_charts(ttl_seconds)
+
+
 def generate_insight_pack(question: str, fmt: str = "png") -> dict[str, Any]:
+    # Opportunistically prune stale artifacts on each pack generation.
+    # Runs under the lock internally; won't block chart generation since
+    # each chart call acquires the same lock separately.
+    try:
+        purge_old_charts()
+    except Exception as exc:
+        logger.warning("Chart purge failed (non-fatal): %s", exc)
+
     q = question.lower()
     visuals: list[dict[str, Any]] = []
     visuals.append(plot_kpi_trend(fmt=fmt))

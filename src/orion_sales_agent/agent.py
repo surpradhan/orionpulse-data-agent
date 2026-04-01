@@ -194,13 +194,11 @@ class OrionAgent:
             followups = ["Should I explain probable drivers for each anomaly?"]
         elif intent == "dashboard":
             data = dashboard_spec()
-            answer = "Created dashboard specification with KPI and trend widgets."
+            answer = self._synthesize_dashboard_answer(question, data)
             followups = ["Need an operations-focused dashboard variant?"]
         elif intent == "storyboard":
             data = storyboard_spec(goal=question)
-            answer = (
-                "Generated executive storyboard flow (context → insights → prediction → actions)."
-            )
+            answer = self._synthesize_storyboard_answer(question, data)
             followups = ["Should I tailor this for CFO audience?"]
         elif intent == "root_cause":
             data = self._root_cause_pack()
@@ -527,18 +525,21 @@ class OrionAgent:
             kw in q_lower for kw in ["top", "best", "leading", "highest", "number one", "#1"]
         ):
             try:
-                top = query_df(
+                df = query_df(
                     settings.db_path,
                     "SELECT region_name, SUM(net_revenue) AS rev FROM vw_region_performance "
                     "GROUP BY region_name ORDER BY rev DESC LIMIT 1",
-                ).iloc[0]
-                region_hint = top["region_name"]
-                parts.append(
-                    f"The top-performing region by revenue is {region_hint} "
-                    f"(${top['rev']:,.0f} total). "
-                    f"Region-level forecasting is not yet supported, so the forecast below "
-                    f"covers overall net revenue as the best available proxy for {region_hint}."
                 )
+                # iloc[0] crash guard: only access if the DataFrame is non-empty
+                if not df.empty:
+                    top = df.iloc[0]
+                    region_hint = top["region_name"]
+                    parts.append(
+                        f"The top-performing region by revenue is {region_hint} "
+                        f"(${top['rev']:,.0f} total). "
+                        f"Region-level forecasting is not yet supported, so the forecast below "
+                        f"covers overall net revenue as the best available proxy for {region_hint}."
+                    )
             except Exception:
                 pass
         elif region_hint:
@@ -550,11 +551,13 @@ class OrionAgent:
 
         if pts:
             first, last = pts[0], pts[-1]
-            trend = "flat" if abs(last["value"] - first["value"]) / first["value"] < 0.02 else (
+            # ZeroDivisionError guard: treat zero-base as flat
+            delta_ratio = abs(last["value"] - first["value"]) / first["value"] if first["value"] else 0
+            trend = "flat" if delta_ratio < 0.02 else (
                 "upward" if last["value"] > first["value"] else "downward"
             )
             parts.append(
-                f"The {scope}{metric} forecast shows a {trend} trend over the next {len(pts)} months: "
+                f"The {scope}{metric} forecast shows a {trend} trend over the next {len(pts)} month(s): "
                 + ", ".join(f"{p['period']} ${p['value']:,.0f}" for p in pts) + "."
             )
             parts.append(
@@ -565,14 +568,17 @@ class OrionAgent:
         if diag:
             mape = diag.get("mape")
             method = diag.get("method", "").replace("_", " ")
-            quality = "excellent" if mape and mape < 5 else "good" if mape and mape < 10 else "moderate"
-            if mape:
+            # mape=None guard: skip quality rating when mape is unavailable
+            if mape is not None:
+                quality = "excellent" if mape < 5 else "good" if mape < 10 else "moderate"
                 parts.append(
                     f"Model: {method}, MAPE {mape:.1f}% ({quality} fit), "
                     f"selected over {len(diag.get('candidates', []))} candidate(s) by backtest RMSE."
                 )
+            elif method:
+                parts.append(f"Model: {method} (MAPE not available for this run).")
 
-        return " ".join(parts)
+        return " ".join(parts) if parts else "Forecast computed — no periods returned for the configured horizon."
 
     def _synthesize_anomaly_answer(self, question: str, data: list) -> str:
         """Turn anomaly detection results into a plain-English answer."""
@@ -735,6 +741,41 @@ class OrionAgent:
             parts.append("No statistical anomalies detected — the margin gap is structural, not event-driven.")
 
         return " ".join(parts)
+
+    def _synthesize_dashboard_answer(self, question: str, data: dict) -> str:
+        """Turn a dashboard spec into a plain-English summary."""
+        widgets = data.get("widgets", [])
+        if not widgets:
+            return "Dashboard specification generated with KPI and trend widgets."
+        kpi_count = sum(1 for w in widgets if "kpi" in str(w.get("type", "")).lower())
+        chart_count = len(widgets) - kpi_count
+        widget_names = [w.get("title") or w.get("type", "widget") for w in widgets]
+        parts = [
+            f"Dashboard specification generated with {len(widgets)} widget(s): "
+            f"{kpi_count} KPI tile(s) and {chart_count} chart(s)."
+        ]
+        if widget_names:
+            parts.append(
+                "Widgets: " + ", ".join(str(n) for n in widget_names[:6])
+                + ("…" if len(widget_names) > 6 else "") + "."
+            )
+        return " ".join(parts)
+
+    def _synthesize_storyboard_answer(self, question: str, data: dict) -> str:
+        """Turn a storyboard spec into a plain-English summary."""
+        slides = data.get("slides", [])
+        goal = data.get("goal", question)
+        if not slides:
+            return (
+                "Executive storyboard generated "
+                "(context → insights → prediction → recommended actions)."
+            )
+        titles = [s.get("title", f"Slide {i+1}") for i, s in enumerate(slides)]
+        return (
+            f"Executive storyboard generated for: \"{goal}\". "
+            f"{len(slides)} slide(s): "
+            + " → ".join(str(t) for t in titles) + "."
+        )
 
     def answer(self, question: str, mode: str = "auto") -> AgentResponse:
         """Main entrypoint for agent responses.
