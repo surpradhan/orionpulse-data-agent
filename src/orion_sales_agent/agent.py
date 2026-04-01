@@ -308,7 +308,9 @@ class OrionAgent:
             if plan.get("final"):
                 return AgentResponse(
                     intent="llm_dynamic",
-                    answer=_sanitize_text(str(plan.get("final_answer", "Generated final response."))),
+                    answer=_sanitize_text(
+                        str(plan.get("final_answer", "Generated final response."))
+                    ),
                     data={"observations": observations},
                     reasoning_summary=reasoning,
                     followups=plan.get("followups", []),
@@ -491,7 +493,8 @@ class OrionAgent:
             else:
                 parts.append(
                     f"{margin_leader['region_name']} leads on both revenue and margin rate "
-                    f"({margin_leader['margin_pct']*100:.1f}%), making it the strongest region overall."
+                    f"({margin_leader['margin_pct']*100:.1f}%), making it the strongest"
+                    " region overall."
                 )
 
         # Product angle if question mentions products/margin
@@ -552,12 +555,15 @@ class OrionAgent:
         if pts:
             first, last = pts[0], pts[-1]
             # ZeroDivisionError guard: treat zero-base as flat
-            delta_ratio = abs(last["value"] - first["value"]) / first["value"] if first["value"] else 0
+            delta_ratio = (
+                abs(last["value"] - first["value"]) / first["value"] if first["value"] else 0
+            )
             trend = "flat" if delta_ratio < 0.02 else (
                 "upward" if last["value"] > first["value"] else "downward"
             )
             parts.append(
-                f"The {scope}{metric} forecast shows a {trend} trend over the next {len(pts)} month(s): "
+                f"The {scope}{metric} forecast shows a {trend} trend"
+                f" over the next {len(pts)} month(s): "
                 + ", ".join(f"{p['period']} ${p['value']:,.0f}" for p in pts) + "."
             )
             parts.append(
@@ -573,12 +579,16 @@ class OrionAgent:
                 quality = "excellent" if mape < 5 else "good" if mape < 10 else "moderate"
                 parts.append(
                     f"Model: {method}, MAPE {mape:.1f}% ({quality} fit), "
-                    f"selected over {len(diag.get('candidates', []))} candidate(s) by backtest RMSE."
+                    f"selected over {len(diag.get('candidates', []))} candidate(s)"
+                    " by backtest RMSE."
                 )
             elif method:
                 parts.append(f"Model: {method} (MAPE not available for this run).")
 
-        return " ".join(parts) if parts else "Forecast computed — no periods returned for the configured horizon."
+        return (
+            " ".join(parts) if parts
+            else "Forecast computed — no periods returned for the configured horizon."
+        )
 
     def _synthesize_anomaly_answer(self, question: str, data: list) -> str:
         """Turn anomaly detection results into a plain-English answer."""
@@ -603,7 +613,8 @@ class OrionAgent:
             )
         else:
             parts.append(
-                "Multiple anomalies may suggest a recurring seasonal pattern or a data quality issue worth investigating."
+                "Multiple anomalies may suggest a recurring seasonal pattern"
+                " or a data quality issue worth investigating."
             )
         return " ".join(parts)
 
@@ -630,13 +641,18 @@ class OrionAgent:
             earliest = rows[0] if rows else {}
 
             rev_key = next((k for k in latest if "revenue" in k.lower()), None)
-            margin_key = next((k for k in latest if "margin_pct" in k.lower() or "margin_%" in k.lower()), None)
+            margin_key = next(
+                (k for k in latest if "margin_pct" in k.lower() or "margin_%" in k.lower()),
+                None,
+            )
             period_key = next((k for k in latest if "period" in k.lower()), None)
 
             if rev_key and period_key:
                 latest_rev = latest.get(rev_key, 0)
                 earliest_rev = earliest.get(rev_key, 0)
-                pct_change = ((latest_rev - earliest_rev) / earliest_rev * 100) if earliest_rev else 0
+                pct_change = (
+                    (latest_rev - earliest_rev) / earliest_rev * 100 if earliest_rev else 0
+                )
                 direction = "up" if pct_change > 0 else "down"
                 parts.append(
                     f"Latest period ({latest.get(period_key, '?')}): "
@@ -738,7 +754,10 @@ class OrionAgent:
                 f"this is a one-period outlier, not a sustained margin trend."
             )
         else:
-            parts.append("No statistical anomalies detected — the margin gap is structural, not event-driven.")
+            parts.append(
+                "No statistical anomalies detected — the margin gap is structural,"
+                " not event-driven."
+            )
 
         return " ".join(parts)
 
