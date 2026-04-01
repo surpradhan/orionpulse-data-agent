@@ -10,17 +10,14 @@ Covers:
 """
 from __future__ import annotations
 
-import json
 import time
-from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
 
 from src.orion_sales_agent.api_models import AgentResultPayload, HealthData, HealthEnvelope
-from src.orion_sales_agent.memory_store import save_memory, load_memory
-from src.orion_sales_agent.webapp import app, _check_rate_limit, _rate_buckets, _rate_lock
+from src.orion_sales_agent.memory_store import load_memory, save_memory
+from src.orion_sales_agent.webapp import _check_rate_limit, _rate_buckets, _rate_lock, app
 
 client = TestClient(app, raise_server_exceptions=True)
 
@@ -76,8 +73,10 @@ class TestRateLimiter:
         _check_rate_limit(ip)
 
     def test_raises_429_after_limit_exceeded(self):
-        from fastapi import HTTPException
         from src.orion_sales_agent.webapp import _RATE_LIMIT_REQUESTS
+
+        from fastapi import HTTPException
+
         ip = "test-ip-exceed"
         self._clear_bucket(ip)
         # Fill the bucket to the limit
