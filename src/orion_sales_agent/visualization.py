@@ -9,9 +9,10 @@ from pathlib import Path
 from typing import Any
 
 import matplotlib
-matplotlib.use("Agg")  # non-interactive backend — required for server/thread use on macOS
 import matplotlib.pyplot as plt
 import seaborn as sns
+
+matplotlib.use("Agg")  # non-interactive backend — required for server/thread use on macOS
 
 from .analytics import anomaly_detection, forecast_metric, kpi_summary
 from .config import settings

@@ -8,13 +8,11 @@ Covers:
 from __future__ import annotations
 
 import inspect
-import time
 
 import pytest
 
 from src.orion_sales_agent.agent import _sanitize_text
 from src.orion_sales_agent.auth import _ct_eq, require_role
-
 
 # ---------------------------------------------------------------------------
 # _sanitize_text
@@ -103,7 +101,6 @@ class TestRequireRole:
 
     def test_wrong_token_raises_for_admin(self, monkeypatch):
         """require_role raises when token doesn't match."""
-        from src.orion_sales_agent import auth
         from src.orion_sales_agent.config import settings
 
         monkeypatch.setattr(settings, "auth_required", True)

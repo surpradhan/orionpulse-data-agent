@@ -10,13 +10,14 @@ Covers:
 """
 from __future__ import annotations
 
-import threading
+import os
 import time
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
 
+from src.orion_sales_agent.llm_client import _is_retryable
 
 # ---------------------------------------------------------------------------
 # Agent synthesizers — crash guards
@@ -31,14 +32,18 @@ class TestSynthesizeForecastCrashGuard:
 
     def test_empty_forecast_list_returns_string(self):
         agent = self._make_agent()
-        result = agent._synthesize_forecast_answer("forecast revenue", {"forecast": [], "diagnostics": {}})
+        result = agent._synthesize_forecast_answer(
+            "forecast revenue", {"forecast": [], "diagnostics": {}}
+        )
         assert isinstance(result, str)
         assert len(result) > 0
 
     def test_mape_none_in_diagnostics_no_crash(self):
         agent = self._make_agent()
         data = {
-            "forecast": [{"period": "2024-01", "value": 100_000, "lower": 90_000, "upper": 110_000}],
+            "forecast": [
+                {"period": "2024-01", "value": 100_000, "lower": 90_000, "upper": 110_000}
+            ],
             "diagnostics": {"mape": None, "method": "holt_winters", "candidates": []},
         }
         result = agent._synthesize_forecast_answer("forecast next month", data)
@@ -102,7 +107,12 @@ class TestSynthesizeDashboard:
 
     def test_widget_count_in_answer(self):
         agent = self._make_agent()
-        data = {"widgets": [{"type": "kpi", "title": "Revenue"}, {"type": "chart", "title": "Trend"}]}
+        data = {
+            "widgets": [
+                {"type": "kpi", "title": "Revenue"},
+                {"type": "chart", "title": "Trend"},
+            ]
+        }
         result = agent._synthesize_dashboard_answer("dashboard", data)
         assert "2" in result
 
@@ -119,7 +129,9 @@ class TestSynthesizeStoryboard:
 
     def test_empty_slides_fallback(self):
         agent = self._make_agent()
-        result = agent._synthesize_storyboard_answer("storyboard", {"slides": [], "goal": "Q3 review"})
+        result = agent._synthesize_storyboard_answer(
+            "storyboard", {"slides": [], "goal": "Q3 review"}
+        )
         assert isinstance(result, str)
 
     def test_slide_titles_in_answer(self):
@@ -146,10 +158,11 @@ class TestVisualizationLock:
     def test_save_plot_acquires_lock(self, tmp_path, monkeypatch):
         """_save_plot must acquire _CHART_LOCK before writing."""
         import matplotlib
-        matplotlib.use("Agg")
         import matplotlib.pyplot as plt
+
         from src.orion_sales_agent import visualization as viz
 
+        matplotlib.use("Agg")
         monkeypatch.setattr(viz, "CHART_DIR", tmp_path)
         monkeypatch.setattr(viz, "MANIFEST", tmp_path / "manifest.json")
 
@@ -181,7 +194,6 @@ class TestArtifactTTLPurge:
         old_file = tmp_path / "old_chart_20240101.png"
         old_file.write_bytes(b"fake png")
         two_days_ago = time.time() - 2 * 86_400
-        import os
         os.utime(old_file, (two_days_ago, two_days_ago))
 
         # Fresh file — should be kept
@@ -210,45 +222,35 @@ class TestArtifactTTLPurge:
 
 class TestLlmCircuitBreaker:
     def test_is_retryable_429(self):
-        import httpx
-        from src.orion_sales_agent.llm_client import _is_retryable
         mock_resp = MagicMock()
         mock_resp.status_code = 429
         exc = httpx.HTTPStatusError("rate limited", request=MagicMock(), response=mock_resp)
         assert _is_retryable(exc) is True
 
     def test_is_retryable_503(self):
-        import httpx
-        from src.orion_sales_agent.llm_client import _is_retryable
         mock_resp = MagicMock()
         mock_resp.status_code = 503
-        exc = httpx.HTTPStatusError("service unavailable", request=MagicMock(), response=mock_resp)
+        exc = httpx.HTTPStatusError(
+            "service unavailable", request=MagicMock(), response=mock_resp
+        )
         assert _is_retryable(exc) is True
 
     def test_is_not_retryable_400(self):
-        import httpx
-        from src.orion_sales_agent.llm_client import _is_retryable
         mock_resp = MagicMock()
         mock_resp.status_code = 400
         exc = httpx.HTTPStatusError("bad request", request=MagicMock(), response=mock_resp)
         assert _is_retryable(exc) is False
 
     def test_is_not_retryable_401(self):
-        import httpx
-        from src.orion_sales_agent.llm_client import _is_retryable
         mock_resp = MagicMock()
         mock_resp.status_code = 401
         exc = httpx.HTTPStatusError("unauthorized", request=MagicMock(), response=mock_resp)
         assert _is_retryable(exc) is False
 
     def test_is_retryable_connect_error(self):
-        import httpx
-        from src.orion_sales_agent.llm_client import _is_retryable
         assert _is_retryable(httpx.ConnectError("connection refused")) is True
 
     def test_is_retryable_timeout(self):
-        import httpx
-        from src.orion_sales_agent.llm_client import _is_retryable
         assert _is_retryable(httpx.ReadTimeout("timed out")) is True
 
     def test_llm_chat_raises_when_not_configured(self):

@@ -32,7 +32,7 @@ def _is_retryable(exc: Exception) -> bool:
     """Return True for transient HTTP errors worth retrying."""
     if isinstance(exc, httpx.HTTPStatusError):
         return exc.response.status_code in _LLM_RETRYABLE_STATUS
-    if isinstance(exc, (httpx.ConnectError, httpx.TimeoutException, httpx.RemoteProtocolError)):
+    if isinstance(exc, httpx.ConnectError | httpx.TimeoutException | httpx.RemoteProtocolError):
         return True
     return False
 

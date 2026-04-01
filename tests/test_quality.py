@@ -73,9 +73,9 @@ class TestRateLimiter:
         _check_rate_limit(ip)
 
     def test_raises_429_after_limit_exceeded(self):
-        from src.orion_sales_agent.webapp import _RATE_LIMIT_REQUESTS
-
         from fastapi import HTTPException
+
+        from src.orion_sales_agent.webapp import _RATE_LIMIT_REQUESTS
 
         ip = "test-ip-exceed"
         self._clear_bucket(ip)
