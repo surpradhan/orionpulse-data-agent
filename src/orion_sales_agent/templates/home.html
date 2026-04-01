@@ -57,6 +57,7 @@
           <span id='micStatus' class='muted'>Mic: idle</span>
           <span id='modeInfo' class='muted'>Mode: -</span>
           <span id='fallbackInfo' class='muted'>Fallback: none</span>
+          <span id='freshnessInfo' class='muted'>Data: —</span>
         </div>
         <div class='row'>
           <span id='warningInfo' class='muted'>Warnings: none</span>
@@ -196,6 +197,9 @@
           document.getElementById('modeInfo').textContent = `Mode: ${modeText}`;
           document.getElementById('fallbackInfo').textContent = `Fallback: ${fallback}`;
           document.getElementById('warningInfo').textContent = `Warnings: ${warnings.length ? warnings.join(' | ') : 'none'}`;
+
+          const ts = data?.timestamp ? new Date(data.timestamp).toLocaleTimeString() : new Date().toLocaleTimeString();
+          document.getElementById('freshnessInfo').textContent = `Data as of: ${ts}`;
 
           const inner = data?.data || {};
           const answer = inner.answer || '';

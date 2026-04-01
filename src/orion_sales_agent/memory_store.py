@@ -24,8 +24,26 @@ def load_memory(memory_file: Path) -> list[dict[str, Any]]:
         return []
 
 
+_MAX_MEMORY_BYTES: int = 50_000  # 50 KB hard cap to prevent unbounded disk growth
+
+
 def save_memory(memory_file: Path, items: list[dict[str, Any]], max_items: int = 20) -> None:
-    """Persist the trailing bounded memory window to disk."""
+    """Persist the trailing bounded memory window to disk.
+
+    Enforces two limits:
+    - At most *max_items* records (removes oldest first).
+    - At most ``_MAX_MEMORY_BYTES`` bytes serialised; if the trailing window
+      still exceeds the cap, items are dropped from the front until it fits.
+    """
 
     memory_file.parent.mkdir(parents=True, exist_ok=True)
-    memory_file.write_text(json.dumps(items[-max_items:], indent=2), encoding="utf-8")
+    window = list(items[-max_items:])
+    # Byte-size guard: trim from the front until serialised size is within cap.
+    while window:
+        serialised = json.dumps(window, indent=2)
+        if len(serialised.encode()) <= _MAX_MEMORY_BYTES:
+            break
+        window.pop(0)
+    memory_file.write_text(
+        json.dumps(window, indent=2) if window else "[]", encoding="utf-8"
+    )
