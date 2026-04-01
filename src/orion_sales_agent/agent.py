@@ -310,7 +310,7 @@ class OrionAgent:
                     intent="llm_dynamic",
                     answer=_sanitize_text(
                         str(plan.get("final_answer", "Generated final response."))
-                    ),
+                    ) or "",
                     data={"observations": observations},
                     reasoning_summary=reasoning,
                     followups=plan.get("followups", []),
@@ -393,7 +393,7 @@ class OrionAgent:
         )
         return AgentResponse(
             intent="llm_dynamic",
-            answer=_sanitize_text(str(synth.get("answer", "Completed multi-hop analysis."))),
+            answer=_sanitize_text(str(synth.get("answer", "Completed multi-hop analysis."))) or "",
             data={"observations": observations},
             reasoning_summary=reasoning,
             followups=synth.get("followups", []),
