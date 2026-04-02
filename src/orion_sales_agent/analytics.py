@@ -1,14 +1,36 @@
 """Analytics primitives for KPI summaries, forecasting, and anomaly detection."""
 from __future__ import annotations
 
+import warnings
 from dataclasses import asdict, dataclass
 from math import sqrt
 from typing import Any, TypedDict, cast
 
 import pandas as pd
+from statsmodels.tools.sm_exceptions import ConvergenceWarning
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
 
 from .db import query_df
+
+
+def _fit_ets(model: ExponentialSmoothing) -> Any:
+    """Fit an ExponentialSmoothing model, suppressing ConvergenceWarning.
+
+    statsmodels raises ConvergenceWarning when the L-BFGS-B optimiser does
+    not fully converge.  The returned fit is still usable (parameters are
+    at the optimiser's best-found point), but pollutes logs and test output.
+    We suppress the warning here rather than at call sites and log at DEBUG
+    level so the information is not silently discarded.
+    """
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always", ConvergenceWarning)
+        fit = model.fit(optimized=True)
+    if any(issubclass(w.category, ConvergenceWarning) for w in caught):
+        import logging
+        logging.getLogger(__name__).debug(
+            "ETS optimiser did not fully converge; using best-found parameters."
+        )
+    return fit
 
 
 class ForecastDiagnostics(TypedDict):
@@ -130,7 +152,7 @@ def forecast_metric(db_path: str, metric: str = "net_revenue", horizon: int = 3)
             seasonal=seasonal,
             seasonal_periods=12 if seasonal else None,
         )
-        fit = model.fit(optimized=True)
+        fit = _fit_ets(model)
         future = fit.forecast(horizon)
     except Exception as exc:
         return _empty_series_response(metric, horizon, f"Forecast model failed: {exc}")
@@ -157,13 +179,18 @@ def forecast_metric(db_path: str, metric: str = "net_revenue", horizon: int = 3)
             )
         )
 
+    _method_label = (
+        "Holt-Winters additive trend/seasonality"
+        if selected == "holt_winters_v1"
+        else "Holt linear (additive trend, no seasonality component)"
+    )
     return {
         "metric": metric,
         "horizon": horizon,
         "history": [asdict(x) for x in hist[-12:]],
         "forecast": [asdict(x) for x in pred],
         "assumptions": [
-            "Holt-Winters additive trend/seasonality",
+            _method_label,
             "Historical seasonality is a useful proxy for near-term demand",
         ],
         "diagnostics": {
@@ -265,7 +292,7 @@ def compute_forecast_diagnostics(
                 seasonal=seasonal,
                 seasonal_periods=12 if seasonal else None,
             )
-            backtest_fit = backtest_model.fit(optimized=True)
+            backtest_fit = _fit_ets(backtest_model)
             candidate_pred = (
                 pd.Series(backtest_fit.forecast(len(test)).values, index=test.index)
                 .astype(float)
@@ -317,7 +344,7 @@ def compute_forecast_diagnostics(
             seasonal=selected_seasonal,
             seasonal_periods=12 if selected_seasonal else None,
         )
-        final_fit = final_model.fit(optimized=True)
+        final_fit = _fit_ets(final_model)
         pred = pd.Series(final_fit.forecast(len(test)).values, index=test.index).astype(float)
     except Exception as exc:
         warnings.append(f"Backtest model failed: {exc}")
