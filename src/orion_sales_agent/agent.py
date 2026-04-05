@@ -672,7 +672,7 @@ class OrionAgent:
             rows_b = periods[key_b]
 
             def _agg(rows: list[dict], field: str) -> float:
-                return sum(r.get(field, 0) for r in rows if r.get(field) is not None)
+                return float(sum(r.get(field, 0) for r in rows if r.get(field) is not None))
 
             rev_a = _agg(rows_a, "net_revenue")
             rev_b = _agg(rows_b, "net_revenue")
