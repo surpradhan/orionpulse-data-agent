@@ -1,6 +1,6 @@
 # Implementation Roadmap — OrionPulse Data Agent
 
-> **Status as of 2026-03-29.**
+> **Status as of 2026-04-05.**
 > This document tracks what has shipped in v1, what is in progress, and what is planned for v2+.
 > Update this file when a milestone ships or priorities shift. See `INDEX.md` for governance.
 
@@ -68,11 +68,11 @@
 | 4.7 | `memory_store.py`: lightweight JSON memory persistence (20-item cap) | ✅ |
 | 4.8 | HTML chat UI with voice-enabled TTS (`ORION_VOICE_PROVIDER`) | ✅ |
 | 4.9 | CI pipeline: lint (ruff), type check (mypy), seed DB, pytest | ✅ |
-| 4.10 | Comprehensive test suite (57 tests, unit + integration) | ✅ |
+| 4.10 | Comprehensive test suite (120 tests, unit + integration + security + reliability + quality) | ✅ |
 
 ---
 
-## Phase 5 — Documentation & Observability (v1, in progress)
+## Phase 5 — Documentation & Observability (v1, complete)
 
 | # | Item | Status |
 |---|------|--------|
@@ -85,6 +85,19 @@
 | 5.7 | `docs/FORECAST_METHODOLOGY.md` — method selection, diagnostics, confidence bands | ✅ |
 | 5.8 | Expand `prompt_templates.md` with filled examples | ✅ |
 | 5.9 | `docs/TEST_STRATEGY.md` — coverage matrix by module | ✅ |
+
+---
+
+## Phase 5.5 — Security & Correctness Hardening (v1.2, complete 2026-04-05)
+
+| # | Item | Status |
+|---|------|--------|
+| 5.5.1 | Intent routing gap fix: `anomaly`/`anomalies`/`anomalous` all route to anomaly handler | ✅ |
+| 5.5.2 | Intent routing gap fix: product-by-revenue phrasing routes to region/product handler | ✅ |
+| 5.5.3 | `sql/views.sql` aligned with `schema.sql`: `vw_region_performance` adds `country`, `sales_channel`, `units_sold`; `vw_product_margin_rank` adds `subcategory`, `units_sold` | ✅ |
+| 5.5.4 | `webapp.py` `_chat_impl`: admin `require_role` check moved before `agent.answer()` | ✅ |
+| 5.5.5 | `mcp_server/server.py` PRAGMA concatenation replaced with f-string + documented allowlist guard | ✅ |
+| 5.5.6 | `analytics.py`: `_METRIC_COLUMN` lookup dict replaces direct f-string metric interpolation in `forecast_metric` and `anomaly_detection` | ✅ |
 
 ---
 
@@ -139,7 +152,8 @@
 | Milestone | Target | Contents |
 |-----------|--------|----------|
 | **v1.0** | Shipped | Phases 1–4 complete, CI green, 57 tests passing |
-| **v1.1** | In progress | Phase 5 documentation, `.env.example`, API reference, viz/forecast guides |
+| **v1.1** | Shipped | Phase 5 documentation complete — `.env.example`, API reference, viz/forecast guides, test strategy |
+| **v1.2** | Shipped | Phase 5.5 hardening — intent routing fixes, `views.sql` alignment, auth order fix, metric lookup dict, 120 tests passing |
 | **v2.0** | TBD | Phase 6 items prioritised as needed |
 
 ---

@@ -19,7 +19,7 @@ It supports:
 
 ## Quick start
 
-1) Create and activate environment
+1) Create and activate environment (requires Python 3.11+)
 
 ```bash
 python -m venv .venv
@@ -37,12 +37,14 @@ cp .env.example .env
 # Edit .env — at minimum set ORION_LLM_API_KEY if using LLM mode
 ```
 
-3) Initialize data and views
+3) Initialize data
 
 ```bash
 python data/init_db.py
-python -c "from src.orion_sales_agent.views import apply_views; from src.orion_sales_agent.config import settings; apply_views(settings.db_path); print('views applied')"
 ```
+
+This seeds the schema, all three analytical views, and synthetic sales data in one step.
+To re-apply views only (without re-seeding), see `docs/OPERATIONS_RUNBOOK.md`.
 
 4) Run services
 
@@ -120,7 +122,9 @@ Safety highlights:
 - SQL constrained to single-statement readonly `SELECT`/`WITH`
 - Allowlist validation for queryable objects
 - SQL row limits bounded by config
-- Admin-only operations gated and policy-checked
+- Admin-only operations gated and policy-checked (admin auth checked before any data processing)
+- LLM output sanitized to strip HTML/script tags before leaving the agent layer
+- Metric identifiers in analytics SQL use a lookup dict, not direct interpolation
 
 ## Validation
 

@@ -215,6 +215,9 @@ def _chat_impl(payload: ChatPayload, x_orion_token: str | None) -> dict:
     with_analytics = payload.with_analytics
     fmt = payload.fmt
 
+    if with_analytics:
+        require_role(x_orion_token, "admin")
+
     resp = agent.answer(q, mode=_effective_web_mode())
     result = {
         "intent": resp.intent,
@@ -230,7 +233,6 @@ def _chat_impl(payload: ChatPayload, x_orion_token: str | None) -> dict:
         vfmt = fmt if fmt in {"png", "svg"} else "png"
         result["visuals"] = generate_insight_pack(q, fmt=vfmt)
     if with_analytics:
-        require_role(x_orion_token, "admin")
         from .analytics_exports import export_analytics_pack
 
         bfmt = fmt if fmt in {"csv", "parquet"} else "csv"

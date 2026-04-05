@@ -451,7 +451,7 @@ class OrionAgent:
         q = question.lower()
         if "forecast" in q or "predict" in q:
             return "forecast"
-        if "anomaly" in q or "outlier" in q or "spike" in q:
+        if "anomal" in q or "outlier" in q or "spike" in q:
             return "anomaly"
         if "dashboard" in q:
             return "dashboard"
@@ -483,7 +483,7 @@ class OrionAgent:
             ))
             or ("breakdown" in q and any(kw in q for kw in {"region", "country", "channel"}))
             or ("product" in q and any(
-                kw in q for kw in {"top", "rank", "margin", "best", "worst"}
+                kw in q for kw in {"top", "rank", "margin", "best", "worst", "highest", "lowest"}
             ))
         ):
             return "region"

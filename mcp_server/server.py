@@ -66,7 +66,9 @@ def describe_table(table_name: str) -> list[dict]:
     if table_name not in ALLOWED_TABLES:
         raise ValueError(f"table_name must be one of: {sorted(ALLOWED_TABLES)}")
     with get_connection(settings.db_path) as conn:
-        rows = conn.execute("PRAGMA table_info(" + table_name + ")").fetchall()
+        # SQLite PRAGMA does not support parameterized binding for identifiers.
+        # The allowlist check above is the injection guard; table_name is safe here.
+        rows = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
     return [dict(r) for r in rows]
 
 
