@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import threading
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -22,6 +23,7 @@ from .llm_client import llm_chat, llm_enabled
 from .memory_store import load_memory, save_memory
 from .planner_contracts import validate_critique, validate_planner_plan, validate_synthesis
 from .specs import dashboard_spec, storyboard_spec
+from .sql_policy import validate_readonly_select
 from .tool_registry import build_tool_registry
 from .visualization import generate_insight_pack
 
@@ -30,7 +32,34 @@ logger = logging.getLogger(__name__)
 SKILLS_DIR = Path(settings.skills_dir)
 MEMORY_FILE = Path(settings.memory_file)
 
+# Thread-safety: guards load/append/save of the conversation memory file so
+# concurrent requests cannot overwrite each other's records.
+_MEMORY_LOCK = threading.Lock()
+
+# Maximum characters allowed per tool-result entry in the LLM observation
+# list.  Results exceeding this are replaced with a truncated preview to
+# prevent LLM context-window overflows on large datasets.
+_OBS_RESULT_MAX_CHARS: int = 4_000
+
+# Tables/views that agent-internal queries are permitted to reference.
+# Used for defence-in-depth validation of all query_df call sites.
+_SQL_ALLOWED_OBJECTS: set[str] = {
+    "fact_sales",
+    "dim_product",
+    "dim_region",
+    "vw_region_performance",
+    "vw_product_margin_rank",
+    "vw_monthly_sales",
+}
+
 _HTML_TAG_RE = re.compile(r"<[^>]{0,200}>")
+
+# Business-outcome keywords that give "why" enough context to classify as root_cause.
+# Defined at module level (frozenset) to avoid re-creating the set on every call.
+_WHY_CONTEXT: frozenset[str] = frozenset({
+    "drop", "decline", "increase", "margin", "revenue", "down", "up",
+    "spike", "fall", "fell", "rose", "grew", "missed", "beat",
+})
 
 
 def _sanitize_text(text: str | None) -> str | None:
@@ -332,7 +361,18 @@ class OrionAgent:
 
             try:
                 out = tools[tool](args)
-                observations.append({"tool": tool, "args": args, "result": out})
+                # Guard against oversized tool results overflowing the LLM
+                # context window.  Serialise to measure, then truncate if needed.
+                raw_result = json.dumps(out, ensure_ascii=False, default=str)
+                if len(raw_result) > _OBS_RESULT_MAX_CHARS:
+                    result_payload: Any = {
+                        "_truncated": True,
+                        "char_count": len(raw_result),
+                        "preview": raw_result[:_OBS_RESULT_MAX_CHARS],
+                    }
+                else:
+                    result_payload = out
+                observations.append({"tool": tool, "args": args, "result": result_payload})
                 self._write_trace(
                     {
                         "phase": "tool_execution",
@@ -401,7 +441,13 @@ class OrionAgent:
         )
 
     def classify_intent(self, question: str) -> str:
-        """Classify user intent using lightweight keyword heuristics."""
+        """Classify user intent using lightweight keyword heuristics.
+
+        Keyword precedence is ordered from most specific to least specific.
+        Generic words ("compare", "breakdown", "product", "why") are only
+        matched when accompanied by domain-specific context to avoid
+        misrouting unrelated questions.
+        """
         q = question.lower()
         if "forecast" in q or "predict" in q:
             return "forecast"
@@ -411,20 +457,34 @@ class OrionAgent:
             return "dashboard"
         if "storyboard" in q or "narrative" in q:
             return "storyboard"
-        if "root cause" in q or "why" in q or "driver" in q:
+        # "why" alone is too generic — require a business-outcome word alongside it.
+        if (
+            "root cause" in q
+            or "driver" in q
+            or ("why" in q and any(kw in q for kw in _WHY_CONTEXT))
+        ):
             return "root_cause"
+        # Region/leaderboard intent — narrow the generic catch-all terms so that
+        # "compare forecast", "product summary", "breakdown by month" etc. don't
+        # accidentally land here.
         if (
             "region" in q
             or "leaderboard" in q
-            or "compare" in q
-            or "breakdown" in q
             or "ranking" in q
             or "by region" in q
             or "by country" in q
             or "by channel" in q
-            or "product" in q
             or "top product" in q
+            or "product margin" in q
+            or "product rank" in q
             or "margin rank" in q
+            or ("compare" in q and any(
+                kw in q for kw in {"region", "country", "channel", "apac", "emea", "latam"}
+            ))
+            or ("breakdown" in q and any(kw in q for kw in {"region", "country", "channel"}))
+            or ("product" in q and any(
+                kw in q for kw in {"top", "rank", "margin", "best", "worst"}
+            ))
         ):
             return "region"
         if "kpi" in q or "summary" in q or "performance" in q:
@@ -433,9 +493,7 @@ class OrionAgent:
 
     def _region_pack(self) -> dict:
         """Build ranked region + product data for leaderboard / comparison questions."""
-        regions = query_df(
-            settings.db_path,
-            """
+        region_sql = """
             SELECT region_name, country, sales_channel,
                    SUM(net_revenue) AS net_revenue,
                    SUM(margin)      AS margin,
@@ -444,12 +502,12 @@ class OrionAgent:
             FROM vw_region_performance
             GROUP BY region_name, country, sales_channel
             ORDER BY net_revenue DESC
-            """,
-        ).to_dict(orient="records")
-        products = query_df(
-            settings.db_path,
-            "SELECT * FROM vw_product_margin_rank ORDER BY margin_pct DESC",
-        ).to_dict(orient="records")
+        """
+        product_sql = "SELECT * FROM vw_product_margin_rank ORDER BY margin_pct DESC"
+        validate_readonly_select(region_sql, _SQL_ALLOWED_OBJECTS)
+        validate_readonly_select(product_sql, _SQL_ALLOWED_OBJECTS)
+        regions = query_df(settings.db_path, region_sql).to_dict(orient="records")
+        products = query_df(settings.db_path, product_sql).to_dict(orient="records")
         return {"regions": regions, "products": products}
 
     def _synthesize_region_answer(self, question: str, data: dict) -> str:
@@ -518,33 +576,41 @@ class OrionAgent:
 
         parts: list[str] = []
 
-        # Resolve which region the question refers to
+        # Resolve which region the question refers to.
+        # One query returns all regions sorted by revenue — serves both name
+        # matching and "top-performing" resolution without a second round-trip.
+        _REGION_BY_REV_SQL = (
+            "SELECT region_name, SUM(net_revenue) AS rev "
+            "FROM vw_region_performance GROUP BY region_name ORDER BY rev DESC"
+        )
+        try:
+            validate_readonly_select(_REGION_BY_REV_SQL, _SQL_ALLOWED_OBJECTS)
+            _rdf = query_df(settings.db_path, _REGION_BY_REV_SQL)
+            _known_region_rows: list[dict] = (
+                _rdf.to_dict(orient="records") if not _rdf.empty else []
+            )
+            _known_regions: list[str] = [r["region_name"] for r in _known_region_rows]
+        except Exception:
+            _known_region_rows = []
+            _known_regions = []
+
         region_hint = next(
-            (r for r in ["NA", "APAC", "EMEA", "LATAM"] if r.lower() in q_lower),
+            (r for r in _known_regions if r.lower() in q_lower),
             None,
         )
         # Resolve semantic references like "top-performing", "best", "leading"
         if not region_hint and any(
             kw in q_lower for kw in ["top", "best", "leading", "highest", "number one", "#1"]
         ):
-            try:
-                df = query_df(
-                    settings.db_path,
-                    "SELECT region_name, SUM(net_revenue) AS rev FROM vw_region_performance "
-                    "GROUP BY region_name ORDER BY rev DESC LIMIT 1",
+            if _known_region_rows:
+                top_row = _known_region_rows[0]
+                region_hint = top_row["region_name"]
+                parts.append(
+                    f"The top-performing region by revenue is {region_hint} "
+                    f"(${top_row['rev']:,.0f} total). "
+                    f"Region-level forecasting is not yet supported, so the forecast below "
+                    f"covers overall net revenue as the best available proxy for {region_hint}."
                 )
-                # iloc[0] crash guard: only access if the DataFrame is non-empty
-                if not df.empty:
-                    top = df.iloc[0]
-                    region_hint = top["region_name"]
-                    parts.append(
-                        f"The top-performing region by revenue is {region_hint} "
-                        f"(${top['rev']:,.0f} total). "
-                        f"Region-level forecasting is not yet supported, so the forecast below "
-                        f"covers overall net revenue as the best available proxy for {region_hint}."
-                    )
-            except Exception:
-                pass
         elif region_hint:
             parts.append(
                 f"Note: region-level forecasting is not yet supported — "
@@ -625,10 +691,10 @@ class OrionAgent:
 
         parts: list[str] = []
 
-        # data is a dict keyed by period or a list — handle both
-        rows = data if isinstance(data, list) else (
-            list(data.values()) if isinstance(data, dict) else []
-        )
+        # kpi_summary() always returns list[dict]; guard for unexpected callers.
+        if not isinstance(data, list):
+            logger.warning("_synthesize_kpi_answer received non-list data: %s", type(data))
+        rows: list[dict] = data if isinstance(data, list) else []
 
         if rows:
             # sort by period if possible
@@ -676,14 +742,12 @@ class OrionAgent:
 
     def _root_cause_pack(self) -> dict:
         """Build a multi-source driver pack for root-cause style questions."""
-        region = query_df(
-            settings.db_path,
-            "SELECT * FROM vw_region_performance ORDER BY net_revenue DESC LIMIT 5",
-        ).to_dict(orient="records")
-        product = query_df(
-            settings.db_path,
-            "SELECT * FROM vw_product_margin_rank ORDER BY margin_pct DESC LIMIT 5",
-        ).to_dict(orient="records")
+        region_sql = "SELECT * FROM vw_region_performance ORDER BY net_revenue DESC LIMIT 5"
+        product_sql = "SELECT * FROM vw_product_margin_rank ORDER BY margin_pct DESC LIMIT 5"
+        validate_readonly_select(region_sql, _SQL_ALLOWED_OBJECTS)
+        validate_readonly_select(product_sql, _SQL_ALLOWED_OBJECTS)
+        region = query_df(settings.db_path, region_sql).to_dict(orient="records")
+        product = query_df(settings.db_path, product_sql).to_dict(orient="records")
         anomalies = anomaly_detection(settings.db_path)
         return {"region_drivers": region, "product_drivers": product, "anomalies": anomalies}
 
@@ -841,9 +905,10 @@ class OrionAgent:
             trace_session["mode"] = "fallback_rule_based"
             trace_session["fallback_reason"] = str(exc)
 
-        mem = load_memory(MEMORY_FILE)
-        mem.append({"question": question, "intent": resp.intent, "answer": resp.answer})
-        save_memory(MEMORY_FILE, mem)
+        with _MEMORY_LOCK:
+            mem = load_memory(MEMORY_FILE)
+            mem.append({"question": question, "intent": resp.intent, "answer": resp.answer})
+            save_memory(MEMORY_FILE, mem)
         trace_session["intent"] = resp.intent
         trace_session["answer"] = resp.answer
         trace_session["followups"] = resp.followups
