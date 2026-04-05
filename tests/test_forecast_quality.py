@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import pandas as pd
 
+from src.orion_sales_agent.config import settings
 from src.orion_sales_agent.forecasting import (
     compute_forecast_diagnostics,
     forecast_metric,
     select_forecast_method,
 )
-from src.orion_sales_agent.config import settings
 
 
 def test_forecast_diagnostics_present_and_bounded() -> None:

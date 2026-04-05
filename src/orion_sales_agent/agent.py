@@ -17,10 +17,10 @@ from pathlib import Path
 from typing import Any
 
 from .analytics import anomaly_detection, kpi_summary
-from .forecasting import forecast_metric
 from .analytics_exports import export_analytics_pack
 from .config import settings
 from .db import query_df
+from .forecasting import forecast_metric
 from .llm_client import llm_chat, llm_enabled
 from .memory_store import load_memory, save_memory
 from .planner_contracts import validate_critique, validate_planner_plan, validate_synthesis

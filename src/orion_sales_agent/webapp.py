@@ -16,7 +16,6 @@ from fastapi.staticfiles import StaticFiles
 
 from .agent import OrionAgent
 from .analytics import kpi_summary
-from .forecasting import forecast_metric
 from .api_models import (
     AskEnvelope,
     AskWithAnalyticsExportsEnvelope,
@@ -29,6 +28,7 @@ from .api_models import (
 )
 from .auth import require_role
 from .config import settings, validate_auth_configuration
+from .forecasting import forecast_metric
 from .rate_limiter import RateLimiter
 
 _rate_limiter = RateLimiter(requests=30, window=60.0)

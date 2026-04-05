@@ -10,8 +10,6 @@ Covers:
 """
 from __future__ import annotations
 
-import time
-
 import pytest
 from fastapi.testclient import TestClient
 
@@ -91,8 +89,8 @@ class TestRateLimiter:
 
     def test_chat_endpoint_rate_limited(self):
         """POST /chat should enforce rate limit."""
-        from collections import deque
         import time as _time
+        from collections import deque
 
         # Saturate the bucket for the testclient IP directly via internal state
         test_ip = "testclient"

@@ -13,9 +13,9 @@ if str(ROOT) not in sys.path:
 from mcp.server.fastmcp import FastMCP  # noqa: E402
 
 from src.orion_sales_agent.analytics import anomaly_detection, kpi_summary  # noqa: E402
-from src.orion_sales_agent.forecasting import forecast_metric  # noqa: E402
 from src.orion_sales_agent.config import settings  # noqa: E402
 from src.orion_sales_agent.db import get_connection, query_df  # noqa: E402
+from src.orion_sales_agent.forecasting import forecast_metric  # noqa: E402
 from src.orion_sales_agent.specs import dashboard_spec, storyboard_spec  # noqa: E402
 from src.orion_sales_agent.sql_policy import (  # noqa: E402
     validate_readonly_select,

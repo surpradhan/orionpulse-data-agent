@@ -7,8 +7,6 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-import pandas as pd
-
 from .db import query_df
 
 # Maps the public metric name to the exact column name in fact_sales.

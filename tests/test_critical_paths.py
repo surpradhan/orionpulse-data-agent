@@ -5,8 +5,8 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from src.orion_sales_agent.agent import OrionAgent
-from src.orion_sales_agent.forecasting import forecast_metric
 from src.orion_sales_agent.config import settings
+from src.orion_sales_agent.forecasting import forecast_metric
 from src.orion_sales_agent.sql_policy import validate_readonly_select, validate_single_statement
 from src.orion_sales_agent.visualization import generate_chart
 from src.orion_sales_agent.webapp import app

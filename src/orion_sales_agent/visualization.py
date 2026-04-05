@@ -15,9 +15,9 @@ import seaborn as sns
 matplotlib.use("Agg")  # non-interactive backend — required for server/thread use on macOS
 
 from .analytics import anomaly_detection, kpi_summary
-from .forecasting import forecast_metric
 from .config import settings
 from .db import query_df
+from .forecasting import forecast_metric
 
 logger = logging.getLogger(__name__)
 # Single lock guards both file I/O (savefig) and manifest updates to prevent
