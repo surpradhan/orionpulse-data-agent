@@ -1,4 +1,5 @@
 """Forecasting primitives: Holt-Winters ETS with holdout backtest and model selection."""
+
 from __future__ import annotations
 
 import logging
@@ -140,10 +141,9 @@ def compute_forecast_diagnostics(
                 seasonal_periods=12 if seasonal else None,
             )
             backtest_fit = _fit_ets(backtest_model)
-            candidate_pred = (
-                pd.Series(backtest_fit.forecast(len(test)).values, index=test.index)
-                .astype(float)
-            )
+            candidate_pred = pd.Series(
+                backtest_fit.forecast(len(test)).values, index=test.index
+            ).astype(float)
             candidate_err = (test.astype(float) - candidate_pred).pow(2)
             candidate_rmse = (
                 float(sqrt(float(candidate_err.mean()))) if len(candidate_err) else None
@@ -316,8 +316,7 @@ def forecast_metric(db_path: str, metric: str = "net_revenue", horizon: int = 3)
 
     resid_std = float(getattr(fit, "resid", pd.Series(dtype=float)).std() or 0.0)
     hist = [
-        ForecastPoint(period=str(p), value=float(v))
-        for p, v in zip(series.index, series.values)
+        ForecastPoint(period=str(p), value=float(v)) for p, v in zip(series.index, series.values)
     ]
     pred: list[ForecastPoint] = []
     for i, (p, v) in enumerate(zip(future.index, future.values), start=1):

@@ -1,4 +1,5 @@
 """API request/response models for OrionPulse web routes."""
+
 from __future__ import annotations
 
 from typing import Any, Literal

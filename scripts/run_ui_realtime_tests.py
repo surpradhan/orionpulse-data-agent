@@ -52,8 +52,7 @@ def main() -> None:
 
     # AUTH current-state check (no auth expected)
     auth_ok = all(
-        (ART / f).exists()
-        for f in ["UI-001_home.html", "UI-002_kpi.json", "UI-003_forecast.json"]
+        (ART / f).exists() for f in ["UI-001_home.html", "UI-002_kpi.json", "UI-003_forecast.json"]
     )
     results.append(("AUTH-001", "PASS" if auth_ok else "FAIL", "Unauthenticated routes reachable"))
 

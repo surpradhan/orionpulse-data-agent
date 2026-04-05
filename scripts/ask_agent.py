@@ -18,11 +18,11 @@ def _print_trace(step: str) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Lightweight local interface for OrionPulse Agent"
-    )
+    parser = argparse.ArgumentParser(description="Lightweight local interface for OrionPulse Agent")
     parser.add_argument(
-        "--question", required=False, default=None,
+        "--question",
+        required=False,
+        default=None,
         help="Natural language or command-like question",
     )
     parser.add_argument("--format", choices=["text", "json"], default="text")

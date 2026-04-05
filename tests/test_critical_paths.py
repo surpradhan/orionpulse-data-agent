@@ -55,7 +55,13 @@ def test_llm_fallback_on_bad_json(monkeypatch):
     resp = agent.answer("forecast next quarter")
     assert resp.execution_mode in {"deterministic", "fallback_rule_based", "llm_orchestrated"}
     assert resp.intent in {
-        "forecast", "kpi", "root_cause", "general", "storyboard", "dashboard", "anomaly"
+        "forecast",
+        "kpi",
+        "root_cause",
+        "general",
+        "storyboard",
+        "dashboard",
+        "anomaly",
     }
 
 
@@ -82,9 +88,7 @@ def test_web_auth_roles(monkeypatch):
     assert r2.status_code == 200
     body2 = r2.json()
     assert body2["status"] == "ok"
-    assert body2["execution_mode"] in {
-        "deterministic", "llm_orchestrated", "fallback_rule_based"
-    }
+    assert body2["execution_mode"] in {"deterministic", "llm_orchestrated", "fallback_rule_based"}
     assert "trace_id" in body2
     assert "timestamp" in body2
     assert "warnings" in body2

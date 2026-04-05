@@ -4,6 +4,7 @@ This module provides deterministic and optional LLM-orchestrated answering flows
 tool execution routing, lightweight short-term memory persistence, and trace
 artifact emission for debugging/operations.
 """
+
 from __future__ import annotations
 
 import json
@@ -58,10 +59,24 @@ _HTML_TAG_RE = re.compile(r"<[^>]{0,200}>")
 
 # Business-outcome keywords that give "why" enough context to classify as root_cause.
 # Defined at module level (frozenset) to avoid re-creating the set on every call.
-_WHY_CONTEXT: frozenset[str] = frozenset({
-    "drop", "decline", "increase", "margin", "revenue", "down", "up",
-    "spike", "fall", "fell", "rose", "grew", "missed", "beat",
-})
+_WHY_CONTEXT: frozenset[str] = frozenset(
+    {
+        "drop",
+        "decline",
+        "increase",
+        "margin",
+        "revenue",
+        "down",
+        "up",
+        "spike",
+        "fall",
+        "fell",
+        "rose",
+        "grew",
+        "missed",
+        "beat",
+    }
+)
 
 
 def _sanitize_text(text: str | None) -> str | None:
@@ -318,6 +333,7 @@ class OrionAgent:
                 description of each planner/tool/critic step. Useful for
                 live CLI tracing (pass a function that prints to stderr).
         """
+
         def _emit(msg: str) -> None:
             if step_callback:
                 step_callback(msg)
@@ -364,7 +380,8 @@ class OrionAgent:
                     intent="llm_dynamic",
                     answer=_sanitize_text(
                         str(plan.get("final_answer", "Generated final response."))
-                    ) or "",
+                    )
+                    or "",
                     data={"observations": observations},
                     reasoning_summary=reasoning,
                     followups=plan.get("followups", []),
@@ -373,10 +390,12 @@ class OrionAgent:
 
             action = plan.get("action")
             if not action or not isinstance(action, dict):
-                observations.append({
-                    "step": step,
-                    "error": "Planner returned final=false but action is missing or null",
-                })
+                observations.append(
+                    {
+                        "step": step,
+                        "error": "Planner returned final=false but action is missing or null",
+                    }
+                )
                 continue
             tool = action.get("tool")
             args = action.get("args") or {}
@@ -431,7 +450,7 @@ class OrionAgent:
             )
             crit_raw = self._llm_chat(critique_system, critique_user)
             critique = self._parse_llm_json(crit_raw, "critique")
-            crit_reason = critique.get('reason', '')
+            crit_reason = critique.get("reason", "")
             crit_continue = critique.get("continue", True)
             reasoning.append(f"Critique: {crit_reason}")
             _emit(f"[CRITIC] continue={crit_continue} — {crit_reason}")
@@ -510,13 +529,18 @@ class OrionAgent:
             or "product margin" in q
             or "product rank" in q
             or "margin rank" in q
-            or ("compare" in q and any(
-                kw in q for kw in {"region", "country", "channel", "apac", "emea", "latam"}
-            ))
+            or (
+                "compare" in q
+                and any(kw in q for kw in {"region", "country", "channel", "apac", "emea", "latam"})
+            )
             or ("breakdown" in q and any(kw in q for kw in {"region", "country", "channel"}))
-            or ("product" in q and any(
-                kw in q for kw in {"top", "rank", "margin", "best", "worst", "highest", "lowest"}
-            ))
+            or (
+                "product" in q
+                and any(
+                    kw in q
+                    for kw in {"top", "rank", "margin", "best", "worst", "highest", "lowest"}
+                )
+            )
         ):
             return "region"
         # Comparative intent: period-over-period questions that require
@@ -640,9 +664,7 @@ class OrionAgent:
         elif len(tokens) == 1:
             # Single token: compare that period against the full dataset
             tok = tokens[0]
-            periods_data[tok] = kpi_summary(
-                settings.db_path, grain="month", period_filter=tok
-            )
+            periods_data[tok] = kpi_summary(settings.db_path, grain="month", period_filter=tok)
             periods_data["all"] = kpi_summary(settings.db_path, grain="quarter")
         else:
             # No period tokens found — return the last two quarters for comparison
@@ -693,8 +715,7 @@ class OrionAgent:
                 f"vs {key_b} ({len(rows_b)} period(s)):"
             )
             parts.append(
-                f"Net revenue: ${rev_a:,.0f} → ${rev_b:,.0f} "
-                f"({_pct_change(rev_a, rev_b)})."
+                f"Net revenue: ${rev_a:,.0f} → ${rev_b:,.0f} " f"({_pct_change(rev_a, rev_b)})."
             )
             parts.append(
                 f"Margin: ${margin_a:,.0f} → ${margin_b:,.0f} "
@@ -791,13 +812,16 @@ class OrionAgent:
             delta_ratio = (
                 abs(last["value"] - first["value"]) / first["value"] if first["value"] else 0
             )
-            trend = "flat" if delta_ratio < 0.02 else (
-                "upward" if last["value"] > first["value"] else "downward"
+            trend = (
+                "flat"
+                if delta_ratio < 0.02
+                else ("upward" if last["value"] > first["value"] else "downward")
             )
             parts.append(
                 f"The {scope}{metric} forecast shows a {trend} trend"
                 f" over the next {len(pts)} month(s): "
-                + ", ".join(f"{p['period']} ${p['value']:,.0f}" for p in pts) + "."
+                + ", ".join(f"{p['period']} ${p['value']:,.0f}" for p in pts)
+                + "."
             )
             parts.append(
                 f"95% confidence band widens to ${pts[-1]['lower']:,.0f}–${pts[-1]['upper']:,.0f} "
@@ -819,7 +843,8 @@ class OrionAgent:
                 parts.append(f"Model: {method} (MAPE not available for this run).")
 
         return (
-            " ".join(parts) if parts
+            " ".join(parts)
+            if parts
             else "Forecast computed — no periods returned for the configured horizon."
         )
 
@@ -883,9 +908,7 @@ class OrionAgent:
             if rev_key and period_key:
                 latest_rev = latest.get(rev_key, 0)
                 earliest_rev = earliest.get(rev_key, 0)
-                pct_change = (
-                    (latest_rev - earliest_rev) / earliest_rev * 100 if earliest_rev else 0
-                )
+                pct_change = (latest_rev - earliest_rev) / earliest_rev * 100 if earliest_rev else 0
                 direction = "up" if pct_change > 0 else "down"
                 parts.append(
                     f"Latest period ({latest.get(period_key, '?')}): "
@@ -1006,8 +1029,10 @@ class OrionAgent:
         ]
         if widget_names:
             parts.append(
-                "Widgets: " + ", ".join(str(n) for n in widget_names[:6])
-                + ("…" if len(widget_names) > 6 else "") + "."
+                "Widgets: "
+                + ", ".join(str(n) for n in widget_names[:6])
+                + ("…" if len(widget_names) > 6 else "")
+                + "."
             )
         return " ".join(parts)
 
@@ -1022,9 +1047,8 @@ class OrionAgent:
             )
         titles = [s.get("title", f"Slide {i+1}") for i, s in enumerate(slides)]
         return (
-            f"Executive storyboard generated for: \"{goal}\". "
-            f"{len(slides)} slide(s): "
-            + " → ".join(str(t) for t in titles) + "."
+            f'Executive storyboard generated for: "{goal}". '
+            f"{len(slides)} slide(s): " + " → ".join(str(t) for t in titles) + "."
         )
 
     def answer(

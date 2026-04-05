@@ -5,6 +5,7 @@ Covers:
 - Auth timing side-channel (_ct_eq / require_role)
 - Constant-time comparison presence in auth module
 """
+
 from __future__ import annotations
 
 import inspect
@@ -18,6 +19,7 @@ from src.orion_sales_agent.auth import _ct_eq, require_role
 # _sanitize_text
 # ---------------------------------------------------------------------------
 
+
 class TestSanitizeText:
     def test_strips_script_tag(self):
         # The sanitizer removes HTML tags — <script> and </script> wrappers are gone.
@@ -28,13 +30,13 @@ class TestSanitizeText:
         assert "Revenue grew 5%" in result
 
     def test_strips_img_onerror(self):
-        result = _sanitize_text('<img src=x onerror=alert(1)> margin improved')
+        result = _sanitize_text("<img src=x onerror=alert(1)> margin improved")
         assert "<img" not in result
         assert "onerror" not in result
         assert "margin improved" in result
 
     def test_strips_inline_style_tag(self):
-        result = _sanitize_text('<style>body{display:none}</style>Real answer here')
+        result = _sanitize_text("<style>body{display:none}</style>Real answer here")
         assert "<style>" not in result
         assert "Real answer here" in result
 
@@ -64,6 +66,7 @@ class TestSanitizeText:
 # _ct_eq
 # ---------------------------------------------------------------------------
 
+
 class TestCtEq:
     def test_matching_strings_return_true(self):
         assert _ct_eq("abc123", "abc123") is True
@@ -91,6 +94,7 @@ class TestCtEq:
 # ---------------------------------------------------------------------------
 # require_role
 # ---------------------------------------------------------------------------
+
 
 class TestRequireRole:
     def test_none_token_never_matches(self):
@@ -144,14 +148,17 @@ class TestRequireRole:
 # Structural: verify hmac.compare_digest is used in auth module
 # ---------------------------------------------------------------------------
 
+
 class TestAuthStructural:
     def test_compare_digest_present_in_auth_source(self):
         from src.orion_sales_agent import auth
+
         src = inspect.getsource(auth)
-        assert "compare_digest" in src, (
-            "auth.py must use hmac.compare_digest for constant-time comparison"
-        )
+        assert (
+            "compare_digest" in src
+        ), "auth.py must use hmac.compare_digest for constant-time comparison"
 
     def test_ct_eq_helper_exists(self):
         from src.orion_sales_agent.auth import _ct_eq
+
         assert callable(_ct_eq)

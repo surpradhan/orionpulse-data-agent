@@ -3,6 +3,7 @@
 Forecasting (Holt-Winters ETS, diagnostics, model selection) lives in
 ``forecasting.py`` — import from there for forecast operations.
 """
+
 from __future__ import annotations
 
 from typing import Any, cast

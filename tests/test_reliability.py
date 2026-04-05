@@ -8,6 +8,7 @@ Covers:
 - Data-driven dashboard and storyboard answers
 - LLM circuit-breaker retry logic (_is_retryable)
 """
+
 from __future__ import annotations
 
 import os
@@ -23,11 +24,13 @@ from src.orion_sales_agent.llm_client import _is_retryable
 # Agent synthesizers — crash guards
 # ---------------------------------------------------------------------------
 
+
 class TestSynthesizeForecastCrashGuard:
     """_synthesize_forecast_answer must never raise on edge-case inputs."""
 
     def _make_agent(self):
         from src.orion_sales_agent.agent import OrionAgent
+
         return OrionAgent()
 
     def test_empty_forecast_list_returns_string(self):
@@ -54,6 +57,7 @@ class TestSynthesizeForecastCrashGuard:
     def test_top_performing_region_with_empty_db_result(self):
         """If the DB returns empty for region lookup, answer must still be returned."""
         import pandas as pd
+
         agent = self._make_agent()
         with patch("src.orion_sales_agent.agent.query_df", return_value=pd.DataFrame()):
             result = agent._synthesize_forecast_answer(
@@ -79,6 +83,7 @@ class TestSynthesizeForecastCrashGuard:
 class TestSynthesizeAnomalyEdgeCases:
     def _make_agent(self):
         from src.orion_sales_agent.agent import OrionAgent
+
         return OrionAgent()
 
     def test_empty_list_returns_clean_message(self):
@@ -98,6 +103,7 @@ class TestSynthesizeAnomalyEdgeCases:
 class TestSynthesizeDashboard:
     def _make_agent(self):
         from src.orion_sales_agent.agent import OrionAgent
+
         return OrionAgent()
 
     def test_empty_widgets_fallback(self):
@@ -125,6 +131,7 @@ class TestSynthesizeDashboard:
 class TestSynthesizeStoryboard:
     def _make_agent(self):
         from src.orion_sales_agent.agent import OrionAgent
+
         return OrionAgent()
 
     def test_empty_slides_fallback(self):
@@ -149,10 +156,12 @@ class TestSynthesizeStoryboard:
 # Visualization — lock coverage and TTL purge
 # ---------------------------------------------------------------------------
 
+
 class TestVisualizationLock:
     def test_chart_lock_and_manifest_lock_are_same_object(self):
         """_CHART_LOCK and _MANIFEST_LOCK must be the same lock (backwards compat alias)."""
         from src.orion_sales_agent.visualization import _CHART_LOCK, _MANIFEST_LOCK
+
         assert _CHART_LOCK is _MANIFEST_LOCK
 
     def test_save_plot_acquires_lock(self, tmp_path, monkeypatch):
@@ -173,6 +182,7 @@ class TestVisualizationLock:
             def __enter__(self):
                 lock_acquired.append(True)
                 return original_lock.__enter__()
+
             def __exit__(self, *args):
                 return original_lock.__exit__(*args)
 
@@ -188,6 +198,7 @@ class TestVisualizationLock:
 class TestArtifactTTLPurge:
     def test_purge_removes_old_files(self, tmp_path, monkeypatch):
         from src.orion_sales_agent import visualization as viz
+
         monkeypatch.setattr(viz, "CHART_DIR", tmp_path)
 
         # Create a file and backdate its mtime to 2 days ago
@@ -207,18 +218,21 @@ class TestArtifactTTLPurge:
 
     def test_purge_zero_when_no_old_files(self, tmp_path, monkeypatch):
         from src.orion_sales_agent import visualization as viz
+
         monkeypatch.setattr(viz, "CHART_DIR", tmp_path)
         removed = viz._purge_old_charts(ttl_seconds=86_400)
         assert removed == 0
 
     def test_purge_is_exposed_as_public_api(self):
         from src.orion_sales_agent.visualization import purge_old_charts
+
         assert callable(purge_old_charts)
 
 
 # ---------------------------------------------------------------------------
 # LLM client — circuit breaker retry
 # ---------------------------------------------------------------------------
+
 
 class TestLlmCircuitBreaker:
     def test_is_retryable_429(self):
@@ -230,9 +244,7 @@ class TestLlmCircuitBreaker:
     def test_is_retryable_503(self):
         mock_resp = MagicMock()
         mock_resp.status_code = 503
-        exc = httpx.HTTPStatusError(
-            "service unavailable", request=MagicMock(), response=mock_resp
-        )
+        exc = httpx.HTTPStatusError("service unavailable", request=MagicMock(), response=mock_resp)
         assert _is_retryable(exc) is True
 
     def test_is_not_retryable_400(self):
@@ -255,6 +267,7 @@ class TestLlmCircuitBreaker:
 
     def test_llm_chat_raises_when_not_configured(self):
         from src.orion_sales_agent.llm_client import llm_chat
+
         with patch("src.orion_sales_agent.llm_client.llm_enabled", return_value=False):
             with pytest.raises(RuntimeError, match="LLM not configured"):
                 llm_chat("system", "user")

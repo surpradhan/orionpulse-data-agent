@@ -4,6 +4,7 @@ Includes a simple exponential-backoff retry loop (circuit breaker lite) that
 retries transient HTTP 429/5xx failures up to ``LLM_MAX_RETRIES`` times with
 jittered sleep, using only stdlib primitives — no extra dependencies.
 """
+
 from __future__ import annotations
 
 import logging
@@ -18,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 # Retry configuration — uses stdlib only, no extra deps.
 _LLM_MAX_RETRIES: int = 3
-_LLM_RETRY_BASE_DELAY: float = 1.0   # seconds; doubled on each attempt
+_LLM_RETRY_BASE_DELAY: float = 1.0  # seconds; doubled on each attempt
 _LLM_RETRYABLE_STATUS: frozenset[int] = frozenset({429, 500, 502, 503, 504})
 
 
@@ -86,11 +87,14 @@ def llm_chat(system_prompt: str, user_prompt: str) -> str:
             if attempt >= _LLM_MAX_RETRIES or not _is_retryable(exc):
                 raise
             # Full-jitter exponential backoff: sleep up to base * 2^attempt seconds
-            cap = _LLM_RETRY_BASE_DELAY * (2 ** attempt)
+            cap = _LLM_RETRY_BASE_DELAY * (2**attempt)
             delay = random.uniform(0, cap)
             logger.warning(
                 "LLM call failed (attempt %d/%d), retrying in %.2fs: %s",
-                attempt + 1, _LLM_MAX_RETRIES, delay, exc,
+                attempt + 1,
+                _LLM_MAX_RETRIES,
+                delay,
+                exc,
             )
             time.sleep(delay)
 

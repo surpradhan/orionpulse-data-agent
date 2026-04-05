@@ -1,4 +1,5 @@
 """MCP tool server exposing OrionPulse analytics and metadata operations."""
+
 from __future__ import annotations
 
 import json

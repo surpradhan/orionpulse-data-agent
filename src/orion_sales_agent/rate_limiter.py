@@ -3,6 +3,7 @@
 Uses a deque of timestamps per client key. Sweep stale buckets periodically
 to prevent unbounded memory growth when many unique IPs are seen over time.
 """
+
 from __future__ import annotations
 
 import itertools

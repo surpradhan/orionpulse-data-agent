@@ -46,7 +46,10 @@ def test_web_contract_chat_and_ask_family(monkeypatch):
     chat = client.post(
         "/chat",
         json={
-            "q": "show kpi summary", "with_visuals": False, "with_analytics": False, "fmt": "png"
+            "q": "show kpi summary",
+            "with_visuals": False,
+            "with_analytics": False,
+            "fmt": "png",
         },
     )
     assert chat.status_code == 200

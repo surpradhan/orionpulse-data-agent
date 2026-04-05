@@ -9,13 +9,18 @@ from src.orion_sales_agent.sql_policy import (
 )
 
 ALLOWED = {
-    "fact_sales", "dim_product", "dim_region", "vw_region_performance", "vw_product_margin_rank"
+    "fact_sales",
+    "dim_product",
+    "dim_region",
+    "vw_region_performance",
+    "vw_product_margin_rank",
 }
 
 
 # ---------------------------------------------------------------------------
 # existing tests
 # ---------------------------------------------------------------------------
+
 
 def test_extract_referenced_objects_handles_cte_and_aliases() -> None:
     query = """
@@ -49,6 +54,7 @@ def test_validate_readonly_select_rejects_unknown_nested_object() -> None:
 # validate_single_statement
 # ---------------------------------------------------------------------------
 
+
 def test_single_statement_strips_trailing_semicolon() -> None:
     assert validate_single_statement("SELECT 1;") == "SELECT 1"
 
@@ -66,6 +72,7 @@ def test_single_statement_rejects_multi_statement() -> None:
 # ---------------------------------------------------------------------------
 # nested subqueries
 # ---------------------------------------------------------------------------
+
 
 def test_nested_subquery_in_where_allowed_objects() -> None:
     query = (
@@ -108,6 +115,7 @@ def test_deeply_nested_subquery_all_allowed() -> None:
 # ---------------------------------------------------------------------------
 # multi-level CTEs
 # ---------------------------------------------------------------------------
+
 
 def test_multi_cte_names_excluded_from_refs() -> None:
     query = """
@@ -155,6 +163,7 @@ def test_cte_referencing_disallowed_base_table_blocked() -> None:
 # ---------------------------------------------------------------------------
 # complex JOINs
 # ---------------------------------------------------------------------------
+
 
 def test_multiple_join_types_extract_correctly() -> None:
     query = """
@@ -208,17 +217,21 @@ def test_join_with_one_disallowed_table_blocked() -> None:
 # forbidden token checks
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("token", [
-    "INSERT INTO fact_sales VALUES (1,2,3)",
-    "UPDATE fact_sales SET net_revenue = 0",
-    "DELETE FROM fact_sales",
-    "DROP TABLE fact_sales",
-    "ALTER TABLE fact_sales ADD COLUMN x INT",
-    "CREATE TABLE evil AS SELECT * FROM fact_sales",
-    "TRUNCATE fact_sales",
-    "REPLACE INTO fact_sales VALUES (1,2,3)",
-    "SELECT * FROM fact_sales; ATTACH DATABASE '/tmp/x' AS x",
-])
+
+@pytest.mark.parametrize(
+    "token",
+    [
+        "INSERT INTO fact_sales VALUES (1,2,3)",
+        "UPDATE fact_sales SET net_revenue = 0",
+        "DELETE FROM fact_sales",
+        "DROP TABLE fact_sales",
+        "ALTER TABLE fact_sales ADD COLUMN x INT",
+        "CREATE TABLE evil AS SELECT * FROM fact_sales",
+        "TRUNCATE fact_sales",
+        "REPLACE INTO fact_sales VALUES (1,2,3)",
+        "SELECT * FROM fact_sales; ATTACH DATABASE '/tmp/x' AS x",
+    ],
+)
 def test_forbidden_tokens_rejected(token: str) -> None:
     with pytest.raises(ValueError):
         validate_readonly_select(token, ALLOWED)
@@ -232,6 +245,7 @@ def test_pragma_blocked() -> None:
 # ---------------------------------------------------------------------------
 # allowlist boundary cases
 # ---------------------------------------------------------------------------
+
 
 def test_query_with_no_from_clause_rejected() -> None:
     with pytest.raises(ValueError, match="at least one"):

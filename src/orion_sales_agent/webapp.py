@@ -3,6 +3,7 @@
 Provides typed API endpoints, token-role access control, response envelope
 standardization, and a lightweight built-in HTML chat UI.
 """
+
 from __future__ import annotations
 
 from contextlib import asynccontextmanager

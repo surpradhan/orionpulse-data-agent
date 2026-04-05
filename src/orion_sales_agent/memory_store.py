@@ -1,4 +1,5 @@
 """Persistence helpers for lightweight bounded agent conversation memory."""
+
 from __future__ import annotations
 
 import json
@@ -44,6 +45,4 @@ def save_memory(memory_file: Path, items: list[dict[str, Any]], max_items: int =
         if len(serialised.encode()) <= _MAX_MEMORY_BYTES:
             break
         window.pop(0)
-    memory_file.write_text(
-        json.dumps(window, indent=2) if window else "[]", encoding="utf-8"
-    )
+    memory_file.write_text(json.dumps(window, indent=2) if window else "[]", encoding="utf-8")

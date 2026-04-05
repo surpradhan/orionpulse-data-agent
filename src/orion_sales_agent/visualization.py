@@ -174,7 +174,10 @@ def plot_forecast_with_band(
     sns.lineplot(x=x_hist, y=y_hist, marker="o", label="History", ax=ax)
     sns.lineplot(x=x_pred, y=y_pred, marker="o", label="Forecast", ax=ax)
     ax.fill_between(
-        range(len(x_hist), len(x_hist) + len(x_pred)), lower, upper, alpha=0.2,
+        range(len(x_hist), len(x_hist) + len(x_pred)),
+        lower,
+        upper,
+        alpha=0.2,
         label="Confidence Band",
     )
     all_x = x_hist + x_pred
@@ -186,9 +189,7 @@ def plot_forecast_with_band(
     ax.legend()
 
     path = _save_plot(fig, f"forecast_{metric}", fmt)
-    meta = {
-        "chart_type": "forecast_with_band", "path": path, "points": len(all_x), "format": fmt
-    }
+    meta = {"chart_type": "forecast_with_band", "path": path, "points": len(all_x), "format": fmt}
     _register_chart(meta)
     return meta
 

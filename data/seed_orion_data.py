@@ -25,7 +25,12 @@ def build_dimensions() -> tuple[pd.DataFrame, pd.DataFrame]:
             (6, "Insight AI", "Analytics", "Enterprise", "2023-02-01", 620.0),
         ],
         columns=[
-            "product_id", "product_name", "category", "subcategory", "launch_date", "base_price"
+            "product_id",
+            "product_name",
+            "category",
+            "subcategory",
+            "launch_date",
+            "base_price",
         ],
     )
 

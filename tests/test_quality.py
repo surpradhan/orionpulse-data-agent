@@ -8,6 +8,7 @@ Covers:
 - extra="forbid" on AgentResultPayload rejects unknown fields
 - HealthEnvelope model validates correctly
 """
+
 from __future__ import annotations
 
 import pytest
@@ -23,6 +24,7 @@ client = TestClient(app, raise_server_exceptions=True)
 # ---------------------------------------------------------------------------
 # /health endpoint
 # ---------------------------------------------------------------------------
+
 
 class TestHealthEndpoint:
     def test_health_returns_200(self):
@@ -58,6 +60,7 @@ class TestHealthEndpoint:
 # ---------------------------------------------------------------------------
 # Rate limiter
 # ---------------------------------------------------------------------------
+
 
 class TestRateLimiter:
     def test_allows_requests_under_limit(self):
@@ -108,6 +111,7 @@ class TestRateLimiter:
 # max_length consistency
 # ---------------------------------------------------------------------------
 
+
 class TestMaxLengthConsistency:
     def test_ask_rejects_over_800_chars(self):
         long_q = "a" * 801
@@ -131,6 +135,7 @@ class TestMaxLengthConsistency:
 # ---------------------------------------------------------------------------
 # Memory bloat guard
 # ---------------------------------------------------------------------------
+
 
 class TestMemoryBloatGuard:
     def test_save_memory_respects_max_items(self, tmp_path):
@@ -162,6 +167,7 @@ class TestMemoryBloatGuard:
 # ---------------------------------------------------------------------------
 # API model strictness
 # ---------------------------------------------------------------------------
+
 
 class TestApiModelStrictness:
     def test_agent_result_payload_rejects_extra_fields(self):

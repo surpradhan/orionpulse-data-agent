@@ -1,4 +1,5 @@
 """Authentication and authorization helpers for web/API channels."""
+
 from __future__ import annotations
 
 import hmac

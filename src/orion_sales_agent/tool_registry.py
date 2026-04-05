@@ -1,4 +1,5 @@
 """Tool registry for LLM planner orchestration actions."""
+
 from __future__ import annotations
 
 from typing import Any

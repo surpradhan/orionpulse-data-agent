@@ -81,7 +81,10 @@ def build_semantic_packs() -> dict[str, str]:
     }
     visual_mapping = {
         "net_revenue_trend": {
-            "chart": "line", "dataset": "sales_monthly", "x": "period", "y": "net_revenue"
+            "chart": "line",
+            "dataset": "sales_monthly",
+            "x": "period",
+            "y": "net_revenue",
         },
         "region_comparison": {
             "chart": "bar",
@@ -90,7 +93,10 @@ def build_semantic_packs() -> dict[str, str]:
             "y": "net_revenue",
         },
         "margin_rank": {
-            "chart": "bar", "dataset": "product_margin", "x": "product_name", "y": "margin_pct"
+            "chart": "bar",
+            "dataset": "product_margin",
+            "x": "product_name",
+            "y": "margin_pct",
         },
     }
     powerbi_model_notes = {
@@ -103,7 +109,9 @@ def build_semantic_packs() -> dict[str, str]:
     }
     tableau_pack = {
         "recommended_data_sources": [
-            "sales_monthly.csv", "region_performance.csv", "product_margin.csv"
+            "sales_monthly.csv",
+            "region_performance.csv",
+            "product_margin.csv",
         ],
         "worksheet_templates": ["Revenue Trend", "Region Performance", "Product Margin Rank"],
     }
