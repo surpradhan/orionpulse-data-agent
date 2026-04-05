@@ -54,6 +54,13 @@ _SQL_ALLOWED_OBJECTS: set[str] = {
 
 _HTML_TAG_RE = re.compile(r"<[^>]{0,200}>")
 
+# Business-outcome keywords that give "why" enough context to classify as root_cause.
+# Defined at module level (frozenset) to avoid re-creating the set on every call.
+_WHY_CONTEXT: frozenset[str] = frozenset({
+    "drop", "decline", "increase", "margin", "revenue", "down", "up",
+    "spike", "fall", "fell", "rose", "grew", "missed", "beat",
+})
+
 
 def _sanitize_text(text: str | None) -> str | None:
     """Strip HTML/script tags from LLM-generated text to prevent XSS injection.
@@ -444,21 +451,17 @@ class OrionAgent:
         q = question.lower()
         if "forecast" in q or "predict" in q:
             return "forecast"
-        if "anomaly" in q or "outlier" in q or "spike" in q:
+        if "anomal" in q or "outlier" in q or "spike" in q:
             return "anomaly"
         if "dashboard" in q:
             return "dashboard"
         if "storyboard" in q or "narrative" in q:
             return "storyboard"
         # "why" alone is too generic — require a business-outcome word alongside it.
-        _why_context = {
-            "drop", "decline", "increase", "margin", "revenue", "down", "up",
-            "spike", "fall", "fell", "rose", "grew", "missed", "beat",
-        }
         if (
             "root cause" in q
             or "driver" in q
-            or ("why" in q and any(kw in q for kw in _why_context))
+            or ("why" in q and any(kw in q for kw in _WHY_CONTEXT))
         ):
             return "root_cause"
         # Region/leaderboard intent — narrow the generic catch-all terms so that
@@ -480,7 +483,7 @@ class OrionAgent:
             ))
             or ("breakdown" in q and any(kw in q for kw in {"region", "country", "channel"}))
             or ("product" in q and any(
-                kw in q for kw in {"top", "rank", "margin", "best", "worst"}
+                kw in q for kw in {"top", "rank", "margin", "best", "worst", "highest", "lowest"}
             ))
         ):
             return "region"
@@ -574,19 +577,21 @@ class OrionAgent:
         parts: list[str] = []
 
         # Resolve which region the question refers to.
-        # Look up actual region names from the DB rather than a hardcoded list
-        # so the detection works regardless of how the data was seeded.
+        # One query returns all regions sorted by revenue — serves both name
+        # matching and "top-performing" resolution without a second round-trip.
+        _REGION_BY_REV_SQL = (
+            "SELECT region_name, SUM(net_revenue) AS rev "
+            "FROM vw_region_performance GROUP BY region_name ORDER BY rev DESC"
+        )
         try:
-            _rdf = query_df(
-                settings.db_path,
-                "SELECT DISTINCT region_name FROM vw_region_performance",
+            validate_readonly_select(_REGION_BY_REV_SQL, _SQL_ALLOWED_OBJECTS)
+            _rdf = query_df(settings.db_path, _REGION_BY_REV_SQL)
+            _known_region_rows: list[dict] = (
+                _rdf.to_dict(orient="records") if not _rdf.empty else []
             )
-            _known_regions: list[str] = (
-                [r["region_name"] for r in _rdf.to_dict(orient="records")]
-                if not _rdf.empty
-                else []
-            )
+            _known_regions: list[str] = [r["region_name"] for r in _known_region_rows]
         except Exception:
+            _known_region_rows = []
             _known_regions = []
 
         region_hint = next(
@@ -597,24 +602,15 @@ class OrionAgent:
         if not region_hint and any(
             kw in q_lower for kw in ["top", "best", "leading", "highest", "number one", "#1"]
         ):
-            try:
-                df = query_df(
-                    settings.db_path,
-                    "SELECT region_name, SUM(net_revenue) AS rev FROM vw_region_performance "
-                    "GROUP BY region_name ORDER BY rev DESC LIMIT 1",
+            if _known_region_rows:
+                top_row = _known_region_rows[0]
+                region_hint = top_row["region_name"]
+                parts.append(
+                    f"The top-performing region by revenue is {region_hint} "
+                    f"(${top_row['rev']:,.0f} total). "
+                    f"Region-level forecasting is not yet supported, so the forecast below "
+                    f"covers overall net revenue as the best available proxy for {region_hint}."
                 )
-                # iloc[0] crash guard: only access if the DataFrame is non-empty
-                if not df.empty:
-                    top = df.iloc[0]
-                    region_hint = top["region_name"]
-                    parts.append(
-                        f"The top-performing region by revenue is {region_hint} "
-                        f"(${top['rev']:,.0f} total). "
-                        f"Region-level forecasting is not yet supported, so the forecast below "
-                        f"covers overall net revenue as the best available proxy for {region_hint}."
-                    )
-            except Exception:
-                pass
         elif region_hint:
             parts.append(
                 f"Note: region-level forecasting is not yet supported — "
@@ -696,6 +692,8 @@ class OrionAgent:
         parts: list[str] = []
 
         # kpi_summary() always returns list[dict]; guard for unexpected callers.
+        if not isinstance(data, list):
+            logger.warning("_synthesize_kpi_answer received non-list data: %s", type(data))
         rows: list[dict] = data if isinstance(data, list) else []
 
         if rows:

@@ -2,15 +2,27 @@
 
 ## Setup
 
+Requires **Python 3.11+**.
+
 ```bash
 python -m venv .venv
+
+# macOS / Linux
+source .venv/bin/activate
+
+# Windows
 .venv\Scripts\activate
+
 pip install -r requirements.txt
 ```
 
 Create local runtime env from template:
 
 ```bash
+# macOS / Linux
+cp .env.example .env
+
+# Windows
 copy .env.example .env
 ```
 
@@ -21,8 +33,15 @@ Set secrets only in `.env` (never commit):
 
 ## Initialize data
 
+`init_db.py` seeds the schema (including all three analytical views) and loads synthetic data in one step:
+
 ```bash
 python data/init_db.py
+```
+
+To re-apply views only (without re-seeding data — useful after editing `sql/views.sql`):
+
+```bash
 python -c "from src.orion_sales_agent.views import apply_views; from src.orion_sales_agent.config import settings; apply_views(settings.db_path)"
 ```
 
@@ -76,4 +95,4 @@ Use these categories in incident notes to speed triage and trend analysis.
 
 - If imports fail, run commands from project root.
 - If DB missing, re-run `python data/init_db.py`.
-- If views missing, apply `apply_views` command above.
+- If views missing or returning wrong columns, run `python data/init_db.py` (re-seeds from scratch) or use the `apply_views` one-liner above to re-apply `sql/views.sql` without re-seeding.

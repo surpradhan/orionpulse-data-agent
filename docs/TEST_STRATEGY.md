@@ -34,13 +34,16 @@ See `.github/workflows/ci.yml`.
 
 | File | Category | Tests | What it covers |
 |------|----------|-------|----------------|
-| `test_sql_policy_edge_cases.py` | Unit | 23 (+9 parametrized) | SQL policy: allowlist, mutation blocking, CTE/alias extraction, nested subqueries, JOIN extraction |
+| `test_sql_policy_edge_cases.py` | Unit | 23 | SQL policy: allowlist, mutation blocking, CTE/alias extraction, nested subqueries, JOIN extraction |
+| `test_security.py` | Unit | 22 | XSS sanitization, constant-time token comparison, `require_role` enforcement, auth structural invariants |
+| `test_reliability.py` | Unit | 23 | Crash guards for forecast/dashboard/storyboard/anomaly synthesis, LLM circuit-breaker, visualization lock, artifact TTL purge |
+| `test_quality.py` | Unit | 18 | Rate limiter correctness, memory bloat guard, health endpoint, API model strictness, max-length consistency |
 | `test_forecast_quality.py` | Unit | 4 | Forecast analytics: diagnostics structure, short-series warnings, method selection, candidate exposure |
 | `test_auth_profile_defaults.py` | Unit | 7 | Auth config: profile resolution, token requirements, invalid profile rejection |
 | `test_critical_paths.py` | Integration | 9 | End-to-end: SQL policy, forecast output, chart contract, LLM fallback, web auth, v1 routes |
 | `test_web_contracts_performance.py` | Integration | 4 | Web API: envelope shape, HTML template, KPI/forecast contracts, latency budget |
 | `test_performance_load.py` | Load | 2 | Concurrency: 16-request burst on `/forecast`, 25-request sustained load on `/kpi` |
-| **Total** | | **49** | |
+| **Total** | | **112 + parametrized = 120** | |
 
 ---
 
@@ -85,9 +88,10 @@ See `.github/workflows/ci.yml`.
 
 | Behaviour | Test | File |
 |-----------|------|------|
-| *(covered indirectly via `/ask` integration)* | — | — |
+| Anomaly synthesis: empty list returns safe message | `test_synthesize_anomaly_empty_list`, `test_synthesize_anomaly_none_input` | reliability |
+| Anomaly synthesis: single flagged period formatted correctly | `test_synthesize_anomaly_single_flagged_period` | reliability |
 
-**Gap:** No dedicated unit tests for `anomaly_detection()`. Should add: valid threshold range, invalid threshold rejection, empty series handling.
+**Gap:** No dedicated unit tests for `anomaly_detection()` itself (threshold range, invalid threshold rejection, z-score correctness, empty DB). Currently covered indirectly via `/ask` integration only.
 
 ---
 
@@ -105,6 +109,19 @@ See `.github/workflows/ci.yml`.
 | Missing token blocks access | `test_auth_required_without_tokens_blocks_access` | critical_paths |
 
 **Gap:** No test for HMAC timing-safe comparison behaviour; no test for token rotation mid-session.
+
+---
+
+### Security (`src/orion_sales_agent/auth.py`, `agent.py`)
+
+| Behaviour | Test | File |
+|-----------|------|------|
+| HTML/script tag stripping from LLM output | `TestSanitizeText` (8 cases) | security |
+| Constant-time token comparison prevents timing attacks | `TestCtEq` (7 cases) | security |
+| `require_role`: analyst/admin enforcement, missing token, wrong role | `TestRequireRole` (5 cases) | security |
+| Auth structural invariants (DEV_OPEN, PROD_STRICT properties) | `TestAuthStructural` (2 cases) | security |
+
+**Gap:** No test confirming admin `require_role` fires before `agent.answer()` in `_chat_impl` (structural regression guard).
 
 ---
 
@@ -154,11 +171,35 @@ See `.github/workflows/ci.yml`.
 
 ---
 
+### Reliability (`src/orion_sales_agent/agent.py`, `visualization.py`)
+
+| Behaviour | Test | File |
+|-----------|------|------|
+| Forecast synthesis handles empty/None data without crash | `TestSynthesizeForecastCrashGuard` (4 cases) | reliability |
+| Dashboard synthesis handles empty/invalid spec | `TestSynthesizeDashboard` (3 cases) | reliability |
+| Storyboard synthesis handles edge inputs | `TestSynthesizeStoryboard` (2 cases) | reliability |
+| LLM circuit-breaker: fallback after repeated tool failures | `TestLlmCircuitBreaker` (7 cases) | reliability |
+| Visualization manifest lock prevents concurrent corruption | `TestVisualizationLock` (2 cases) | reliability |
+| Artifact TTL purge removes stale charts | `TestArtifactTTLPurge` (3 cases) | reliability |
+
+### Quality / Operational (`src/orion_sales_agent/webapp.py`, `memory_store.py`)
+
+| Behaviour | Test | File |
+|-----------|------|------|
+| Rate limiter: per-IP bucketing, window expiry, burst enforcement | `TestRateLimiter` (4 cases) | quality |
+| Memory bloat guard: 50 KB cap enforced on write | `TestMemoryBloatGuard` (4 cases) | quality |
+| `/health` endpoint returns status and DB connectivity | `TestHealthEndpoint` (4 cases) | quality |
+| API model field strictness (no extra fields accepted) | `TestApiModelStrictness` (3 cases) | quality |
+| Max-length consistency across response fields | `TestMaxLengthConsistency` (3 cases) | quality |
+
+---
+
 ### Not Yet Covered
 
 | Module | Gap |
 |--------|-----|
 | `analytics_exports.py` | No unit tests for CSV/Parquet export, semantic pack file contents, manifest structure |
+| `analytics.py` (anomaly) | No unit tests for `anomaly_detection()` threshold validation, z-score correctness, empty series |
 | `specs.py` | No tests for `dashboard_spec()` with filters, `storyboard_spec()` with non-default audience |
 | `memory_store.py` | No tests for 20-item cap eviction, persistence across restarts |
 | `agent.py` | No unit tests for planner/critic/synthesis step validation (covered only via integration) |
@@ -209,14 +250,14 @@ to override environment variables and settings without touching the real environ
 
 | Priority | Module | Test to add |
 |----------|--------|-------------|
-| P1 | `anomaly_detection` | Threshold validation, empty series, correct z-score flagging |
+| P1 | `anomaly_detection` | Direct unit tests: threshold range validation, invalid threshold rejection, z-score correctness, empty series |
 | P1 | `analytics_exports` | CSV row counts match DB, parquet schema, manifest keys |
-| P1 | `webapp.py` | 422 on bad `fmt`/`q` values; `with_visuals=true` chart path in response |
+| P1 | `webapp.py` | 422 on bad `fmt`/`q` values; structural test that admin `require_role` precedes `agent.answer()` |
 | P2 | `specs.py` | `dashboard_spec` with filters, `storyboard_spec` audience variations |
 | P2 | `memory_store.py` | 20-item eviction, file persistence round-trip |
 | P2 | `kpi_summary` | Quarter grain, period_filter, empty DB |
 | P3 | `llm_client.py` | Timeout, retry exhaustion |
-| P3 | `visualization.py` | SVG output, individual chart function contracts |
+| P3 | `visualization.py` | SVG output, individual chart function contracts, manifest JSON structure |
 
 ---
 

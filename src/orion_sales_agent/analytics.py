@@ -1,6 +1,7 @@
 """Analytics primitives for KPI summaries, forecasting, and anomaly detection."""
 from __future__ import annotations
 
+import logging
 import warnings
 from dataclasses import asdict, dataclass
 from math import sqrt
@@ -11,6 +12,34 @@ from statsmodels.tools.sm_exceptions import ConvergenceWarning
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
 
 from .db import query_df
+
+# Maps the public metric name to the exact column name in fact_sales.
+# Used instead of f-string interpolation so the allowed set and the SQL
+# identifier are defined in one place and injection is structurally impossible.
+_METRIC_COLUMN: dict[str, str] = {
+    "net_revenue": "net_revenue",
+    "margin": "margin",
+    "units_sold": "units_sold",
+}
+
+
+def _fit_ets(model: ExponentialSmoothing) -> Any:
+    """Fit an ExponentialSmoothing model, suppressing ConvergenceWarning.
+
+    statsmodels raises ConvergenceWarning when the L-BFGS-B optimiser does
+    not fully converge.  The returned fit is still usable (parameters are
+    at the optimiser's best-found point), but pollutes logs and test output.
+    We suppress the warning here rather than at call sites and log at DEBUG
+    level so the information is not silently discarded.
+    """
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")  # catch all categories, filter below
+        fit = model.fit(optimized=True)
+    if any(issubclass(w.category, ConvergenceWarning) for w in caught):
+        logging.getLogger(__name__).debug(
+            "ETS optimiser did not fully converge; using best-found parameters."
+        )
+    return fit
 
 
 def _fit_ets(model: ExponentialSmoothing) -> Any:
@@ -108,15 +137,16 @@ def forecast_metric(db_path: str, metric: str = "net_revenue", horizon: int = 3)
     Uses Holt linear / Holt-Winters additive seasonality depending on series
     length. Returns graceful warning payloads for empty/insufficient history.
     """
-    if metric not in {"net_revenue", "margin", "units_sold"}:
+    if metric not in _METRIC_COLUMN:
         raise ValueError("Unsupported metric")
     if not isinstance(horizon, int) or horizon < 1 or horizon > 24:
         raise ValueError("horizon must be an integer between 1 and 24")
 
+    col = _METRIC_COLUMN[metric]
     df = query_df(
         db_path,
         f"""
-        SELECT substr(order_date,1,7) AS period, SUM({metric}) AS value
+        SELECT substr(order_date,1,7) AS period, SUM({col}) AS value
         FROM fact_sales
         GROUP BY 1
         ORDER BY 1
@@ -395,15 +425,16 @@ def anomaly_detection(
     db_path: str, metric: str = "net_revenue", threshold: float = 2.0
 ) -> list[dict]:
     """Detect outliers via z-score thresholding over monthly aggregated metric."""
-    if metric not in {"net_revenue", "margin", "units_sold"}:
+    if metric not in _METRIC_COLUMN:
         raise ValueError("Unsupported metric")
     if not isinstance(threshold, int | float) or threshold < 1.0 or threshold > 5.0:
         raise ValueError("threshold must be a number between 1.0 and 5.0")
 
+    col = _METRIC_COLUMN[metric]
     df = query_df(
         db_path,
         f"""
-        SELECT substr(order_date,1,7) AS period, SUM({metric}) AS value
+        SELECT substr(order_date,1,7) AS period, SUM({col}) AS value
         FROM fact_sales
         GROUP BY 1
         ORDER BY 1
