@@ -14,7 +14,8 @@ import seaborn as sns
 
 matplotlib.use("Agg")  # non-interactive backend — required for server/thread use on macOS
 
-from .analytics import anomaly_detection, forecast_metric, kpi_summary
+from .analytics import anomaly_detection, kpi_summary
+from .forecasting import forecast_metric
 from .config import settings
 from .db import query_df
 

@@ -12,12 +12,18 @@ if str(ROOT) not in sys.path:
 from src.orion_sales_agent.agent import OrionAgent  # noqa: E402
 
 
+def _print_trace(step: str) -> None:
+    """Print a single planner step to stderr during LLM execution."""
+    print(f"  [TRACE] {step}", file=sys.stderr)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Lightweight local interface for OrionPulse Agent"
     )
     parser.add_argument(
-        "--question", required=True, help="Natural language or command-like question"
+        "--question", required=False, default=None,
+        help="Natural language or command-like question",
     )
     parser.add_argument("--format", choices=["text", "json"], default="text")
     parser.add_argument(
@@ -34,13 +40,36 @@ def main() -> None:
         action="store_true",
         help="Generate Analytics Exports pack and semantic files",
     )
+    parser.add_argument(
+        "--reset-memory",
+        action="store_true",
+        help="Clear the conversation memory file and exit",
+    )
+    parser.add_argument(
+        "--trace",
+        action="store_true",
+        help="Print planner reasoning steps to stderr during LLM execution",
+    )
     args = parser.parse_args()
 
     from src.orion_sales_agent.config import settings
 
+    if args.reset_memory:
+        memory_path = Path(settings.memory_file)
+        memory_path.write_text("[]", encoding="utf-8")
+        print(f"Memory cleared: {memory_path}")
+        if not args.question:
+            return
+
+    if not args.question:
+        parser.error("--question is required unless --reset-memory is used alone")
+
     execution_mode = args.mode or settings.cli_default_mode
     agent = OrionAgent()
-    resp = agent.answer(args.question, mode=execution_mode)
+
+    step_cb = _print_trace if args.trace else None
+    resp = agent.answer(args.question, mode=execution_mode, step_callback=step_cb)
+
     result = {
         "intent": resp.intent,
         "answer": resp.answer,

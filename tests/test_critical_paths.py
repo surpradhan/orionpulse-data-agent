@@ -5,7 +5,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from src.orion_sales_agent.agent import OrionAgent
-from src.orion_sales_agent.analytics import forecast_metric
+from src.orion_sales_agent.forecasting import forecast_metric
 from src.orion_sales_agent.config import settings
 from src.orion_sales_agent.sql_policy import validate_readonly_select, validate_single_statement
 from src.orion_sales_agent.visualization import generate_chart
@@ -141,6 +141,51 @@ def test_v1_routes_available(monkeypatch):
 
     r3 = client.get("/v1/forecast", headers={"x-orion-token": "analyst123"})
     assert r3.status_code == 200
+
+
+def test_compare_intent_classification():
+    """classify_intent should route period-comparison questions to 'compare'."""
+    agent = OrionAgent()
+    assert agent.classify_intent("compare Q1 vs Q2 revenue") == "compare"
+    assert agent.classify_intent("compare 2024 vs 2025 performance") == "compare"
+    assert agent.classify_intent("Q3 versus Q4 margin") == "compare"
+    # Non-comparative questions should not be routed to compare
+    assert agent.classify_intent("forecast next 3 months") != "compare"
+    assert agent.classify_intent("show kpi summary") != "compare"
+
+
+def test_compare_intent_returns_structured_data():
+    """The compare handler should return a periods dict with at least one entry."""
+    agent = OrionAgent()
+    resp = agent.answer("compare Q1 vs Q2 revenue", mode="deterministic")
+    assert resp.intent == "compare"
+    assert resp.answer  # non-empty answer
+    assert isinstance(resp.data, dict)
+    assert "periods" in resp.data
+
+
+def test_compare_fallback_no_tokens():
+    """With no period tokens, compare returns last two quarters without error."""
+    agent = OrionAgent()
+    resp = agent.answer("compare the two most recent quarters", mode="deterministic")
+    # May route to general or compare depending on keyword match — either is fine,
+    # but if it routes to compare the response must be valid.
+    if resp.intent == "compare":
+        assert isinstance(resp.data, dict)
+        assert resp.answer
+
+
+def test_memory_reset_endpoint(monkeypatch, tmp_path):
+    """DELETE /memory should clear the memory file when admin token is provided."""
+    monkeypatch.setattr(settings, "admin_token", "admin-test")
+    monkeypatch.setattr(settings, "auth_required", True)
+    client = TestClient(app)
+
+    r = client.request("DELETE", "/memory", headers={"x-orion-token": "admin-test"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "ok"
+    assert "cleared" in body["data"]["message"].lower()
 
 
 def test_auth_required_without_tokens_blocks_access(monkeypatch):

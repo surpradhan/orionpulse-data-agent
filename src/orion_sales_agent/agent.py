@@ -10,12 +10,14 @@ import json
 import logging
 import re
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from .analytics import anomaly_detection, forecast_metric, kpi_summary
+from .analytics import anomaly_detection, kpi_summary
+from .forecasting import forecast_metric
 from .analytics_exports import export_analytics_pack
 from .config import settings
 from .db import query_df
@@ -244,6 +246,13 @@ class OrionAgent:
             data = kpi_summary(settings.db_path)
             answer = self._synthesize_kpi_answer(question, data)
             followups = ["Need quarter-over-quarter or YoY comparison?"]
+        elif intent == "compare":
+            data = self._compare_pack(question)
+            answer = self._synthesize_compare_answer(question, data)
+            followups = [
+                "Want me to break this down by region?",
+                "Should I forecast where the trend heads next quarter?",
+            ]
         elif (
             "chart" in question.lower()
             or "visual" in question.lower()
@@ -293,12 +302,26 @@ class OrionAgent:
             execution_mode=execution_mode,
         )
 
-    def _llm_orchestrated_answer(self, question: str) -> AgentResponse:
+    def _llm_orchestrated_answer(
+        self,
+        question: str,
+        step_callback: Callable[[str], None] | None = None,
+    ) -> AgentResponse:
         """Run planner/tool/critique/synthesis loop for dynamic reasoning.
 
         The loop is bounded by configured max steps and guarded by strict JSON
         schema validation with repair attempts.
+
+        Args:
+            question: User query.
+            step_callback: Optional callable invoked with a human-readable
+                description of each planner/tool/critic step. Useful for
+                live CLI tracing (pass a function that prints to stderr).
         """
+        def _emit(msg: str) -> None:
+            if step_callback:
+                step_callback(msg)
+
         tools = self._tool_registry()
         tool_names = sorted(tools.keys())
         observations: list[dict[str, Any]] = []
@@ -323,7 +346,9 @@ class OrionAgent:
             )
             raw = self._llm_chat(planner_system, planner_user)
             plan = self._parse_llm_json(raw, "planner")
-            reasoning.append(str(plan.get("thought", f"Step {step} planned")))
+            thought = str(plan.get("thought", f"Step {step} planned"))
+            reasoning.append(thought)
+            _emit(f"[PLANNER step {step}] {thought}")
             self._write_trace(
                 {
                     "phase": "planner",
@@ -359,6 +384,7 @@ class OrionAgent:
                 observations.append({"tool": tool, "error": "Invalid tool requested by planner"})
                 continue
 
+            _emit(f"[TOOL] calling '{tool}' with args {args}")
             try:
                 out = tools[tool](args)
                 # Guard against oversized tool results overflowing the LLM
@@ -373,6 +399,7 @@ class OrionAgent:
                 else:
                     result_payload = out
                 observations.append({"tool": tool, "args": args, "result": result_payload})
+                _emit(f"[TOOL] '{tool}' returned {len(raw_result)} chars")
                 self._write_trace(
                     {
                         "phase": "tool_execution",
@@ -384,6 +411,7 @@ class OrionAgent:
                 )
             except Exception as exc:
                 observations.append({"tool": tool, "args": args, "error": str(exc)})
+                _emit(f"[TOOL] '{tool}' raised: {exc}")
                 self._write_trace(
                     {
                         "phase": "tool_execution",
@@ -403,7 +431,10 @@ class OrionAgent:
             )
             crit_raw = self._llm_chat(critique_system, critique_user)
             critique = self._parse_llm_json(crit_raw, "critique")
-            reasoning.append(f"Critique: {critique.get('reason', '')}")
+            crit_reason = critique.get('reason', '')
+            crit_continue = critique.get("continue", True)
+            reasoning.append(f"Critique: {crit_reason}")
+            _emit(f"[CRITIC] continue={crit_continue} — {crit_reason}")
             self._write_trace(
                 {
                     "phase": "critique",
@@ -411,9 +442,10 @@ class OrionAgent:
                     "critique": critique,
                 }
             )
-            if critique.get("continue") is False:
+            if crit_continue is False:
                 break
 
+        _emit(f"[SYNTH] synthesizing answer from {len(observations)} observation(s)")
         synth_system = (
             "You are a business analyst agent. Return STRICT JSON with keys: "
             "answer (string), followups (array of strings)."
@@ -487,6 +519,14 @@ class OrionAgent:
             ))
         ):
             return "region"
+        # Comparative intent: period-over-period questions that require
+        # running kpi_summary twice and diffing — checked before kpi/summary
+        # so "compare 2024 vs 2025 performance" routes here, not to kpi.
+        if ("compare" in q or "versus" in q or "vs" in q or "vs." in q) and (
+            any(kw in q for kw in {"quarter", "month", "year", "q1", "q2", "q3", "q4"})
+            or bool(re.search(r"\b20\d{2}\b", q))
+        ):
+            return "compare"
         if "kpi" in q or "summary" in q or "performance" in q:
             return "kpi"
         return "general"
@@ -563,6 +603,133 @@ class OrionAgent:
                 f"Top product by margin: '{top_p['product_name']}' ({top_p['category']}) "
                 f"at {top_p['margin_pct']*100:.1f}% on ${top_p['net_revenue']:,.0f} revenue. "
                 f"Lowest: '{low_p['product_name']}' at {low_p['margin_pct']*100:.1f}%."
+            )
+
+        return " ".join(parts)
+
+    def _compare_pack(self, question: str) -> dict:
+        """Build a period-over-period comparison pack from KPI data.
+
+        Extracts up to two period tokens from the question (e.g. "Q1", "2024",
+        "2025-03") and runs kpi_summary with each as a period_filter.  Falls
+        back to full history with a note when tokens cannot be resolved.
+
+        This is the canonical example of a question where the LLM path adds
+        real value: it can chain kpi_summary calls with dynamic period args
+        and synthesize the diff in natural language.  The deterministic path
+        here is a best-effort fallback that illustrates what the LLM path does
+        automatically.
+        """
+        import re as _re
+
+        # Extract period tokens: full years (2023-2025), quarter labels (Q1-Q4),
+        # and ISO year-month prefixes (2024-03).
+        tokens = _re.findall(
+            r"\b(20\d{2}-\d{2}|20\d{2}-Q[1-4]|Q[1-4]|20\d{2})\b",
+            question,
+            flags=_re.IGNORECASE,
+        )
+        tokens = [t.upper() for t in tokens]
+
+        periods_data: dict[str, list[dict]] = {}
+        if len(tokens) >= 2:
+            for tok in tokens[:2]:
+                periods_data[tok] = kpi_summary(
+                    settings.db_path, grain="quarter", period_filter=tok
+                ) or kpi_summary(settings.db_path, grain="month", period_filter=tok)
+        elif len(tokens) == 1:
+            # Single token: compare that period against the full dataset
+            tok = tokens[0]
+            periods_data[tok] = kpi_summary(
+                settings.db_path, grain="month", period_filter=tok
+            )
+            periods_data["all"] = kpi_summary(settings.db_path, grain="quarter")
+        else:
+            # No period tokens found — return the last two quarters for comparison
+            all_data = kpi_summary(settings.db_path, grain="quarter")
+            if len(all_data) >= 2:
+                periods_data["period_A"] = [all_data[-2]]
+                periods_data["period_B"] = [all_data[-1]]
+            else:
+                periods_data["all"] = all_data
+
+        return {"periods": periods_data, "tokens_detected": tokens}
+
+    def _synthesize_compare_answer(self, question: str, data: dict) -> str:
+        """Turn a compare pack into a plain-English period-over-period summary."""
+        periods: dict[str, list[dict]] = data.get("periods", {})
+        tokens: list[str] = data.get("tokens_detected", [])
+
+        if not periods:
+            return "No period data available for comparison."
+
+        parts: list[str] = []
+        period_keys = list(periods.keys())
+
+        if len(period_keys) == 2:
+            key_a, key_b = period_keys
+            rows_a = periods[key_a]
+            rows_b = periods[key_b]
+
+            def _agg(rows: list[dict], field: str) -> float:
+                return sum(r.get(field, 0) for r in rows if r.get(field) is not None)
+
+            rev_a = _agg(rows_a, "net_revenue")
+            rev_b = _agg(rows_b, "net_revenue")
+            margin_a = _agg(rows_a, "margin")
+            margin_b = _agg(rows_b, "margin")
+            units_a = _agg(rows_a, "units_sold")
+            units_b = _agg(rows_b, "units_sold")
+
+            def _pct_change(old: float, new: float) -> str:
+                if old == 0:
+                    return "N/A"
+                change = (new - old) / old * 100
+                sign = "+" if change >= 0 else ""
+                return f"{sign}{change:.1f}%"
+
+            parts.append(
+                f"Comparing {key_a} ({len(rows_a)} period(s)) "
+                f"vs {key_b} ({len(rows_b)} period(s)):"
+            )
+            parts.append(
+                f"Net revenue: ${rev_a:,.0f} → ${rev_b:,.0f} "
+                f"({_pct_change(rev_a, rev_b)})."
+            )
+            parts.append(
+                f"Margin: ${margin_a:,.0f} → ${margin_b:,.0f} "
+                f"({_pct_change(margin_a, margin_b)})."
+            )
+            parts.append(
+                f"Units sold: {units_a:,.0f} → {units_b:,.0f} "
+                f"({_pct_change(units_a, units_b)})."
+            )
+
+            # Highlight if margin rate improved/declined while revenue moved opposite
+            rev_up = rev_b > rev_a
+            margin_up = margin_b > margin_a
+            if rev_up and not margin_up:
+                parts.append(
+                    "Note: revenue grew but margin contracted — possible mix shift "
+                    "toward lower-margin products or increased discounting."
+                )
+            elif not rev_up and margin_up:
+                parts.append(
+                    "Note: revenue declined but margin improved — possible mix shift "
+                    "toward higher-margin SKUs or reduced discounting."
+                )
+        else:
+            # Single or unstructured period — just summarise what we have
+            for key, rows in periods.items():
+                if rows:
+                    rev = sum(r.get("net_revenue", 0) for r in rows)
+                    parts.append(f"{key}: {len(rows)} period(s), total revenue ${rev:,.0f}.")
+
+        if not tokens:
+            parts.append(
+                "Tip: include specific period labels (e.g. 'Q1 vs Q2', '2024 vs 2025') "
+                "for a more precise comparison. In LLM mode this question triggers "
+                "dynamic multi-step tool chaining."
             )
 
         return " ".join(parts)
@@ -860,12 +1027,21 @@ class OrionAgent:
             + " → ".join(str(t) for t in titles) + "."
         )
 
-    def answer(self, question: str, mode: str = "auto") -> AgentResponse:
+    def answer(
+        self,
+        question: str,
+        mode: str = "auto",
+        step_callback: Callable[[str], None] | None = None,
+    ) -> AgentResponse:
         """Main entrypoint for agent responses.
 
         Args:
             question: Natural-language user query.
             mode: One of ``auto``, ``deterministic``, or ``llm``.
+            step_callback: Optional callable invoked with a human-readable
+                description of each LLM planner/tool/critic step. Only active
+                when the LLM path runs. Pass a stderr-print function for live
+                CLI tracing (see ``scripts/ask_agent.py --trace``).
 
         Returns:
             AgentResponse with intent, answer, payload, follow-ups, and
@@ -888,7 +1064,7 @@ class OrionAgent:
                 resp = self._rule_based_answer(question, execution_mode="deterministic")
                 trace_session["mode"] = "deterministic"
             elif llm_eligible:
-                resp = self._llm_orchestrated_answer(question)
+                resp = self._llm_orchestrated_answer(question, step_callback=step_callback)
                 trace_session["mode"] = "llm_orchestrated"
             else:
                 resp = self._rule_based_answer(question, execution_mode="deterministic")

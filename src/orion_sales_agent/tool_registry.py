@@ -3,7 +3,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from .analytics import anomaly_detection, forecast_metric, kpi_summary
+from .analytics import anomaly_detection, kpi_summary
+from .forecasting import forecast_metric
 from .analytics_exports import export_analytics_pack
 from .config import settings
 from .db import query_df

@@ -2,7 +2,7 @@
 
 Covers:
 - /health endpoint schema and response shape
-- Rate limiter (_check_rate_limit) enforces cap and resets after window
+- Rate limiter (RateLimiter.check) enforces cap and resets after window
 - max_length=800 enforced consistently across /ask and /chat
 - Memory bloat guard (50 KB hard cap in save_memory)
 - extra="forbid" on AgentResultPayload rejects unknown fields
@@ -17,7 +17,7 @@ from fastapi.testclient import TestClient
 
 from src.orion_sales_agent.api_models import AgentResultPayload, HealthData, HealthEnvelope
 from src.orion_sales_agent.memory_store import load_memory, save_memory
-from src.orion_sales_agent.webapp import _check_rate_limit, _rate_buckets, _rate_lock, app
+from src.orion_sales_agent.webapp import _rate_limiter, app
 
 client = TestClient(app, raise_server_exceptions=True)
 
@@ -62,52 +62,48 @@ class TestHealthEndpoint:
 # ---------------------------------------------------------------------------
 
 class TestRateLimiter:
-    def _clear_bucket(self, ip: str) -> None:
-        with _rate_lock:
-            _rate_buckets.pop(ip, None)
-
     def test_allows_requests_under_limit(self):
         ip = "test-ip-allow"
-        self._clear_bucket(ip)
+        _rate_limiter.reset_key(ip)
         # Should not raise for a single request
-        _check_rate_limit(ip)
+        _rate_limiter.check(ip)
 
     def test_raises_429_after_limit_exceeded(self):
         from fastapi import HTTPException
 
-        from src.orion_sales_agent.webapp import _RATE_LIMIT_REQUESTS
-
         ip = "test-ip-exceed"
-        self._clear_bucket(ip)
+        _rate_limiter.reset_key(ip)
         # Fill the bucket to the limit
-        for _ in range(_RATE_LIMIT_REQUESTS):
-            _check_rate_limit(ip)
+        for _ in range(_rate_limiter._max_requests):
+            _rate_limiter.check(ip)
         # Next call should raise
         with pytest.raises(HTTPException) as exc_info:
-            _check_rate_limit(ip)
+            _rate_limiter.check(ip)
         assert exc_info.value.status_code == 429
 
     def test_different_ips_are_independent(self):
         ip_a = "test-ip-a"
         ip_b = "test-ip-b"
-        self._clear_bucket(ip_a)
-        self._clear_bucket(ip_b)
-        _check_rate_limit(ip_a)
-        _check_rate_limit(ip_b)  # should not raise
+        _rate_limiter.reset_key(ip_a)
+        _rate_limiter.reset_key(ip_b)
+        _rate_limiter.check(ip_a)
+        _rate_limiter.check(ip_b)  # should not raise
 
     def test_chat_endpoint_rate_limited(self):
         """POST /chat should enforce rate limit."""
-        from src.orion_sales_agent.webapp import _RATE_LIMIT_REQUESTS, _rate_buckets, _rate_lock
-        # Saturate the bucket for this test client IP
+        from collections import deque
+        import time as _time
+
+        # Saturate the bucket for the testclient IP directly via internal state
         test_ip = "testclient"
-        with _rate_lock:
-            from collections import deque
-            _rate_buckets[test_ip] = deque([time.monotonic()] * _RATE_LIMIT_REQUESTS)
+        with _rate_limiter._lock:
+            _rate_limiter._buckets[test_ip] = deque(
+                [_time.monotonic()] * _rate_limiter._max_requests
+            )
         resp = client.post("/chat", json={"q": "hello"})
         assert resp.status_code == 429
         # Clean up
-        with _rate_lock:
-            _rate_buckets.pop(test_ip, None)
+        _rate_limiter.reset_key(test_ip)
 
 
 # ---------------------------------------------------------------------------
@@ -122,17 +118,14 @@ class TestMaxLengthConsistency:
 
     def test_ask_accepts_exactly_800_chars(self):
         # Rate-limit guard: clear bucket first
-        from src.orion_sales_agent.webapp import _rate_buckets, _rate_lock
-        with _rate_lock:
-            _rate_buckets.pop("testclient", None)
+        _rate_limiter.reset_key("testclient")
         long_q = "describe " + "a" * (800 - len("describe "))
         resp = client.get(f"/ask?q={long_q}")
         # Should not be a 422 validation error (may be 200 or auth error)
         assert resp.status_code != 422
 
     def test_chat_payload_rejects_over_800_chars(self):
-        with _rate_lock:
-            _rate_buckets.pop("testclient", None)
+        _rate_limiter.reset_key("testclient")
         resp = client.post("/chat", json={"q": "a" * 801})
         assert resp.status_code == 422
 

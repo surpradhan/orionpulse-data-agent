@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from src.orion_sales_agent.analytics import (
+from src.orion_sales_agent.forecasting import (
     compute_forecast_diagnostics,
     forecast_metric,
     select_forecast_method,

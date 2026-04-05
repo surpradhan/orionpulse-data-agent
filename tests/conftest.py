@@ -12,11 +12,10 @@ def _reset_rate_bucket_testclient():
     """Clear the rate-limit bucket for the synthetic 'testclient' IP before each test.
 
     FastAPI's TestClient uses 'testclient' as the client host.  Without this
-    fixture, timestamps left by earlier tests accumulate in the shared
-    _rate_buckets dict and cause spurious 429s in load/burst tests.
+    fixture, timestamps left by earlier tests accumulate and cause spurious
+    429s in load/burst tests.
     """
-    from src.orion_sales_agent.webapp import _rate_buckets, _rate_lock
+    from src.orion_sales_agent.webapp import _rate_limiter
 
-    with _rate_lock:
-        _rate_buckets.pop("testclient", None)
+    _rate_limiter.reset_key("testclient")
     yield
