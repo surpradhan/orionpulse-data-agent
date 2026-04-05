@@ -1,0 +1,1370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OrionPulse — Sales Analytics Data Agent</title>
+  <meta name="description" content="A deterministic-first sales analytics agent with optional LLM orchestration. Forecasting, anomaly detection, and BI output via MCP, CLI, and Web API." />
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ─── Reset & Base ─────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg-deep:    #060913;
+      --bg-card:    #0d1225;
+      --bg-card2:   #111830;
+      --border:     rgba(99, 143, 255, 0.12);
+      --border-hi:  rgba(99, 143, 255, 0.35);
+      --blue:       #4f8eff;
+      --blue-dim:   #2a5bcc;
+      --cyan:       #00d4e8;
+      --purple:     #8b5cf6;
+      --purple-dim: #6340b8;
+      --gold:       #f4b942;
+      --green:      #22d3a0;
+      --red:        #f46060;
+      --text-1:     #e8edf8;
+      --text-2:     #8a99bf;
+      --text-3:     #4a5a7a;
+      --radius:     14px;
+      --radius-sm:  8px;
+      --glow-blue:  0 0 40px rgba(79, 142, 255, 0.18);
+      --glow-purple:0 0 40px rgba(139, 92, 246, 0.18);
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Space Grotesk', sans-serif;
+      background: var(--bg-deep);
+      color: var(--text-1);
+      line-height: 1.65;
+      overflow-x: hidden;
+    }
+
+    /* ─── Canvas stars ──────────────────────────────────────────────────── */
+    #starfield {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+    }
+
+    /* ─── Layout helpers ────────────────────────────────────────────────── */
+    .container {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 0 24px;
+      position: relative;
+      z-index: 1;
+    }
+
+    section { padding: 96px 0; }
+
+    .section-label {
+      font-family: 'Space Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--blue);
+      margin-bottom: 14px;
+    }
+
+    .section-title {
+      font-size: clamp(28px, 4vw, 44px);
+      font-weight: 700;
+      line-height: 1.2;
+      letter-spacing: -0.02em;
+      color: var(--text-1);
+    }
+
+    .section-sub {
+      font-size: 17px;
+      color: var(--text-2);
+      max-width: 560px;
+      margin-top: 14px;
+    }
+
+    /* ─── Nav ───────────────────────────────────────────────────────────── */
+    nav {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 100;
+      padding: 0 24px;
+      height: 64px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: rgba(6, 9, 19, 0.72);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .nav-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      color: var(--text-1);
+      font-weight: 700;
+      font-size: 17px;
+      letter-spacing: -0.01em;
+    }
+
+    .nav-logo-icon {
+      width: 30px;
+      height: 30px;
+      position: relative;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 32px;
+      list-style: none;
+    }
+
+    .nav-links a {
+      color: var(--text-2);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+      transition: color 0.2s;
+    }
+
+    .nav-links a:hover { color: var(--text-1); }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 20px;
+      border-radius: var(--radius-sm);
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 14px;
+      font-weight: 600;
+      text-decoration: none;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--blue), var(--purple));
+      color: #fff;
+      box-shadow: 0 0 24px rgba(79, 142, 255, 0.25);
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 0 36px rgba(79, 142, 255, 0.4);
+    }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--text-2);
+      border: 1px solid var(--border);
+    }
+
+    .btn-ghost:hover {
+      border-color: var(--border-hi);
+      color: var(--text-1);
+    }
+
+    /* ─── Hero ──────────────────────────────────────────────────────────── */
+    #hero {
+      padding: 160px 0 96px;
+      text-align: center;
+      position: relative;
+    }
+
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px 6px 8px;
+      border-radius: 100px;
+      background: rgba(79, 142, 255, 0.1);
+      border: 1px solid rgba(79, 142, 255, 0.2);
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--blue);
+      margin-bottom: 28px;
+      letter-spacing: 0.03em;
+    }
+
+    .hero-badge-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--blue);
+      animation: pulse-dot 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(0.7); }
+    }
+
+    .hero-title {
+      font-size: clamp(42px, 7vw, 80px);
+      font-weight: 700;
+      line-height: 1.08;
+      letter-spacing: -0.03em;
+      margin-bottom: 24px;
+    }
+
+    .hero-title .highlight {
+      background: linear-gradient(135deg, var(--blue) 0%, var(--cyan) 50%, var(--purple) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .hero-desc {
+      font-size: clamp(16px, 2vw, 19px);
+      color: var(--text-2);
+      max-width: 580px;
+      margin: 0 auto 40px;
+      line-height: 1.7;
+    }
+
+    .hero-actions {
+      display: flex;
+      gap: 14px;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-bottom: 64px;
+    }
+
+    .btn-lg {
+      padding: 14px 28px;
+      font-size: 15px;
+      border-radius: 10px;
+    }
+
+    /* Terminal window */
+    .terminal {
+      background: #0b0e1b;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      max-width: 720px;
+      margin: 0 auto;
+      box-shadow: 0 32px 80px rgba(0,0,0,0.6), var(--glow-blue);
+      text-align: left;
+    }
+
+    .terminal-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 16px;
+      background: rgba(255,255,255,0.03);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .terminal-dot {
+      width: 11px; height: 11px;
+      border-radius: 50%;
+    }
+
+    .terminal-dot.red   { background: #ff5f57; }
+    .terminal-dot.yellow{ background: #ffbd2e; }
+    .terminal-dot.green { background: #28ca41; }
+
+    .terminal-title {
+      font-family: 'Space Mono', monospace;
+      font-size: 11px;
+      color: var(--text-3);
+      margin-left: 4px;
+    }
+
+    .terminal-body {
+      padding: 20px 24px;
+      font-family: 'Space Mono', monospace;
+      font-size: 13px;
+      line-height: 1.8;
+    }
+
+    .t-dim  { color: var(--text-3); }
+    .t-cmd  { color: var(--cyan); }
+    .t-out  { color: var(--text-2); }
+    .t-key  { color: var(--blue); }
+    .t-val  { color: var(--green); }
+    .t-str  { color: var(--gold); }
+    .t-num  { color: var(--purple); }
+    .t-warn { color: var(--gold); }
+    .t-err  { color: var(--red); }
+
+    .cursor {
+      display: inline-block;
+      width: 8px;
+      height: 14px;
+      background: var(--cyan);
+      vertical-align: middle;
+      animation: blink 1.1s step-start infinite;
+    }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0; }
+    }
+
+    /* ─── Stats bar ─────────────────────────────────────────────────────── */
+    .stats-bar {
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      background: rgba(13, 18, 37, 0.5);
+      padding: 32px 0;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0;
+    }
+
+    .stat-item {
+      padding: 0 32px;
+      border-right: 1px solid var(--border);
+      text-align: center;
+    }
+
+    .stat-item:last-child { border-right: none; }
+
+    .stat-num {
+      font-size: 36px;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      background: linear-gradient(135deg, var(--blue), var(--cyan));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .stat-label {
+      font-size: 13px;
+      color: var(--text-3);
+      margin-top: 4px;
+      font-weight: 500;
+    }
+
+    /* ─── Features ──────────────────────────────────────────────────────── */
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+      margin-top: 56px;
+    }
+
+    .feature-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 28px;
+      transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .feature-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--accent-color, var(--blue)), transparent);
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    .feature-card:hover {
+      border-color: var(--border-hi);
+      transform: translateY(-3px);
+      box-shadow: var(--glow-blue);
+    }
+
+    .feature-card:hover::before { opacity: 1; }
+
+    .feature-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      margin-bottom: 18px;
+    }
+
+    .feature-title {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: var(--text-1);
+    }
+
+    .feature-desc {
+      font-size: 14px;
+      color: var(--text-2);
+      line-height: 1.65;
+    }
+
+    /* ─── Architecture ──────────────────────────────────────────────────── */
+    #architecture {
+      background: linear-gradient(180deg, var(--bg-deep) 0%, rgba(13,18,37,0.4) 50%, var(--bg-deep) 100%);
+    }
+
+    .arch-diagram {
+      margin-top: 56px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 48px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .arch-diagram::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse at 50% 0%, rgba(79,142,255,0.06) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .arch-layers {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .arch-layer {
+      display: grid;
+      gap: 12px;
+    }
+
+    .arch-layer-label {
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--text-3);
+      margin-bottom: 2px;
+    }
+
+    .arch-nodes {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .arch-node {
+      padding: 10px 18px;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      font-weight: 600;
+      white-space: nowrap;
+      border: 1px solid;
+    }
+
+    .arch-node.blue   { background: rgba(79,142,255,0.1); border-color: rgba(79,142,255,0.3); color: #7aacff; }
+    .arch-node.purple { background: rgba(139,92,246,0.1); border-color: rgba(139,92,246,0.3); color: #a78bfa; }
+    .arch-node.cyan   { background: rgba(0,212,232,0.08); border-color: rgba(0,212,232,0.25); color: #67e8f9; }
+    .arch-node.green  { background: rgba(34,211,160,0.08); border-color: rgba(34,211,160,0.25); color: #6ee7b7; }
+    .arch-node.gold   { background: rgba(244,185,66,0.08); border-color: rgba(244,185,66,0.25); color: #fcd34d; }
+    .arch-node.dim    { background: rgba(255,255,255,0.03); border-color: rgba(255,255,255,0.08); color: var(--text-2); }
+
+    .arch-arrow {
+      text-align: center;
+      color: var(--text-3);
+      font-size: 18px;
+      line-height: 1;
+      margin: 4px 0;
+    }
+
+    /* ─── Modes ─────────────────────────────────────────────────────────── */
+    .modes-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+      margin-top: 56px;
+    }
+
+    .mode-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 32px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .mode-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; bottom: 0;
+      width: 3px;
+      background: var(--accent-color, var(--blue));
+    }
+
+    .mode-badge {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 100px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+
+    .mode-title {
+      font-size: 19px;
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+
+    .mode-desc {
+      font-size: 14px;
+      color: var(--text-2);
+      line-height: 1.7;
+      margin-bottom: 20px;
+    }
+
+    .mode-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .pill {
+      padding: 4px 12px;
+      border-radius: 100px;
+      font-size: 12px;
+      font-weight: 500;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--border);
+      color: var(--text-2);
+    }
+
+    /* ─── Code block ────────────────────────────────────────────────────── */
+    .code-section {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      margin-top: 56px;
+      align-items: start;
+    }
+
+    .code-card {
+      background: #080c1a;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+
+    .code-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      background: rgba(255,255,255,0.02);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .code-title {
+      font-family: 'Space Mono', monospace;
+      font-size: 11px;
+      color: var(--text-3);
+      letter-spacing: 0.05em;
+    }
+
+    .code-lang {
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      background: rgba(79,142,255,0.1);
+      color: var(--blue);
+      border: 1px solid rgba(79,142,255,0.2);
+    }
+
+    pre {
+      padding: 20px 24px;
+      font-family: 'Space Mono', monospace;
+      font-size: 12.5px;
+      line-height: 1.85;
+      overflow-x: auto;
+      tab-size: 2;
+    }
+
+    .k  { color: #c792ea; }   /* keyword */
+    .s  { color: #c3e88d; }   /* string  */
+    .c  { color: #546e7a; }   /* comment */
+    .n  { color: #82aaff; }   /* name/attr */
+    .v  { color: #f78c6c; }   /* value/num */
+    .f  { color: #89ddff; }   /* function */
+    .p  { color: var(--text-2); } /* plain */
+
+    /* ─── Tech stack ────────────────────────────────────────────────────── */
+    .tech-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin-top: 56px;
+    }
+
+    .tech-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 22px;
+      transition: border-color 0.2s, transform 0.2s;
+    }
+
+    .tech-card:hover {
+      border-color: var(--border-hi);
+      transform: translateY(-2px);
+    }
+
+    .tech-name {
+      font-weight: 700;
+      font-size: 15px;
+      margin-bottom: 4px;
+    }
+
+    .tech-role {
+      font-size: 12px;
+      color: var(--text-3);
+    }
+
+    /* ─── MCP Tools ─────────────────────────────────────────────────────── */
+    .tools-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      margin-top: 56px;
+    }
+
+    .tool-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 18px 20px;
+      transition: border-color 0.2s;
+    }
+
+    .tool-row:hover { border-color: var(--border-hi); }
+
+    .tool-name {
+      font-family: 'Space Mono', monospace;
+      font-size: 12px;
+      color: var(--cyan);
+      white-space: nowrap;
+      padding-top: 1px;
+    }
+
+    .tool-desc {
+      font-size: 13px;
+      color: var(--text-2);
+      line-height: 1.5;
+    }
+
+    /* ─── CTA ───────────────────────────────────────────────────────────── */
+    #cta {
+      padding: 96px 0;
+      text-align: center;
+      position: relative;
+    }
+
+    .cta-glow {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: 600px;
+      height: 300px;
+      background: radial-gradient(ellipse, rgba(79,142,255,0.12) 0%, rgba(139,92,246,0.08) 50%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .cta-title {
+      font-size: clamp(32px, 5vw, 52px);
+      font-weight: 700;
+      letter-spacing: -0.025em;
+      line-height: 1.15;
+      margin-bottom: 18px;
+    }
+
+    .cta-sub {
+      font-size: 17px;
+      color: var(--text-2);
+      margin-bottom: 40px;
+    }
+
+    /* ─── Footer ────────────────────────────────────────────────────────── */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 36px 0;
+    }
+
+    .footer-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .footer-copy {
+      font-size: 13px;
+      color: var(--text-3);
+    }
+
+    .footer-links {
+      display: flex;
+      gap: 24px;
+    }
+
+    .footer-links a {
+      font-size: 13px;
+      color: var(--text-3);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+
+    .footer-links a:hover { color: var(--text-2); }
+
+    /* ─── Orion SVG logo ─────────────────────────────────────────────────── */
+    .orion-logo {
+      display: inline-block;
+    }
+
+    /* ─── Scroll animations ─────────────────────────────────────────────── */
+    .reveal {
+      opacity: 0;
+      transform: translateY(24px);
+      transition: opacity 0.65s ease, transform 0.65s ease;
+    }
+
+    .reveal.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* ─── Responsive ────────────────────────────────────────────────────── */
+    @media (max-width: 900px) {
+      .features-grid  { grid-template-columns: 1fr 1fr; }
+      .modes-grid     { grid-template-columns: 1fr; }
+      .code-section   { grid-template-columns: 1fr; }
+      .tech-grid      { grid-template-columns: 1fr 1fr; }
+      .tools-grid     { grid-template-columns: 1fr; }
+      .stats-grid     { grid-template-columns: repeat(2, 1fr); }
+      .stat-item:nth-child(2) { border-right: none; }
+      nav .nav-links  { display: none; }
+    }
+
+    @media (max-width: 600px) {
+      .features-grid { grid-template-columns: 1fr; }
+      .tech-grid     { grid-template-columns: 1fr 1fr; }
+      .stats-grid    { grid-template-columns: 1fr 1fr; }
+      .arch-nodes    { flex-direction: column; }
+      .arch-node     { text-align: center; }
+    }
+  </style>
+</head>
+
+<body>
+
+<!-- Stars canvas -->
+<canvas id="starfield"></canvas>
+
+<!-- ─── Nav ─────────────────────────────────────────────────────────────── -->
+<nav>
+  <a href="#" class="nav-logo">
+    <svg class="nav-logo-icon" viewBox="0 0 30 30" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <!-- Orion belt stars -->
+      <circle cx="6"  cy="14" r="2.2" fill="#4f8eff" opacity="0.9"/>
+      <circle cx="15" cy="10" r="2.8" fill="#4f8eff"/>
+      <circle cx="24" cy="14" r="2.2" fill="#4f8eff" opacity="0.9"/>
+      <!-- Orion body -->
+      <circle cx="10" cy="6"  r="1.5" fill="#8b5cf6" opacity="0.7"/>
+      <circle cx="20" cy="6"  r="1.5" fill="#8b5cf6" opacity="0.7"/>
+      <circle cx="8"  cy="22" r="1.5" fill="#00d4e8" opacity="0.7"/>
+      <circle cx="22" cy="22" r="1.5" fill="#00d4e8" opacity="0.7"/>
+      <!-- Connector lines -->
+      <line x1="6" y1="14" x2="15" y2="10" stroke="#4f8eff" stroke-width="0.8" opacity="0.4"/>
+      <line x1="15" y1="10" x2="24" y2="14" stroke="#4f8eff" stroke-width="0.8" opacity="0.4"/>
+      <line x1="10" y1="6"  x2="20" y2="6"  stroke="#8b5cf6" stroke-width="0.6" opacity="0.3"/>
+      <line x1="8"  y1="22" x2="22" y2="22" stroke="#00d4e8" stroke-width="0.6" opacity="0.3"/>
+      <!-- Pulse ring -->
+      <circle cx="15" cy="10" r="6" stroke="#4f8eff" stroke-width="0.7" fill="none" opacity="0.25"/>
+    </svg>
+    OrionPulse
+  </a>
+  <ul class="nav-links">
+    <li><a href="#features">Features</a></li>
+    <li><a href="#architecture">Architecture</a></li>
+    <li><a href="#modes">Modes</a></li>
+    <li><a href="#mcp-tools">MCP Tools</a></li>
+    <li><a href="#quickstart">Quickstart</a></li>
+  </ul>
+  <a href="https://github.com/surpradhan/orionpulse-data-agent" class="btn btn-ghost" style="font-size:13px;padding:7px 16px;">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.44 9.8 8.21 11.39.6.11.82-.26.82-.58v-2.03c-3.34.73-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.09-.75.08-.73.08-.73 1.2.08 1.84 1.24 1.84 1.24 1.07 1.83 2.81 1.3 3.5.99.11-.78.42-1.3.76-1.6-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.12-.3-.54-1.52.12-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 013-.4c1.02 0 2.04.13 3 .4 2.28-1.55 3.29-1.23 3.29-1.23.66 1.66.24 2.88.12 3.18.77.84 1.24 1.91 1.24 3.22 0 4.61-2.81 5.63-5.48 5.92.43.37.81 1.1.81 2.22v3.29c0 .32.21.7.82.58C20.56 21.8 24 17.3 24 12c0-6.63-5.37-12-12-12z"/></svg>
+    GitHub
+  </a>
+</nav>
+
+<!-- ─── Hero ──────────────────────────────────────────────────────────────── -->
+<section id="hero">
+  <div class="container">
+    <div class="hero-badge">
+      <span class="hero-badge-dot"></span>
+      Open Source · Python 3.11+ · MCP · FastAPI
+    </div>
+
+    <h1 class="hero-title">
+      Sales Intelligence,<br />
+      <span class="highlight">Engineered for Precision</span>
+    </h1>
+
+    <p class="hero-desc">
+      OrionPulse is a deterministic-first sales analytics agent with optional LLM orchestration.
+      Forecasting, anomaly detection, and BI output — accessible via MCP, CLI, and Web API.
+    </p>
+
+    <div class="hero-actions">
+      <a href="#quickstart" class="btn btn-primary btn-lg">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        Get Started
+      </a>
+      <a href="https://github.com/surpradhan/orionpulse-data-agent" class="btn btn-ghost btn-lg">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.44 9.8 8.21 11.39.6.11.82-.26.82-.58v-2.03c-3.34.73-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.09-.75.08-.73.08-.73 1.2.08 1.84 1.24 1.84 1.24 1.07 1.83 2.81 1.3 3.5.99.11-.78.42-1.3.76-1.6-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.12-.3-.54-1.52.12-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 013-.4c1.02 0 2.04.13 3 .4 2.28-1.55 3.29-1.23 3.29-1.23.66 1.66.24 2.88.12 3.18.77.84 1.24 1.91 1.24 3.22 0 4.61-2.81 5.63-5.48 5.92.43.37.81 1.1.81 2.22v3.29c0 .32.21.7.82.58C20.56 21.8 24 17.3 24 12c0-6.63-5.37-12-12-12z"/></svg>
+        View on GitHub
+      </a>
+    </div>
+
+    <!-- Terminal demo -->
+    <div class="terminal reveal">
+      <div class="terminal-bar">
+        <span class="terminal-dot red"></span>
+        <span class="terminal-dot yellow"></span>
+        <span class="terminal-dot green"></span>
+        <span class="terminal-title">orionpulse — zsh</span>
+      </div>
+      <div class="terminal-body">
+        <div><span class="t-dim">$ </span><span class="t-cmd">python scripts/ask_agent.py</span></div>
+        <div><span class="t-dim">  --mode auto</span></div>
+        <div><span class="t-dim">  --question "Forecast Q4 net revenue with 90% confidence interval"</span></div>
+        <div>&nbsp;</div>
+        <div><span class="t-key">trace_id</span><span class="t-out">: </span><span class="t-str">"orion-2026-04-05-a3f9"</span></div>
+        <div><span class="t-key">execution_mode</span><span class="t-out">: </span><span class="t-val">"deterministic"</span></div>
+        <div><span class="t-key">method</span><span class="t-out">: </span><span class="t-val">"ETS(AAA)"</span>  <span class="t-key">mape</span><span class="t-out">: </span><span class="t-num">4.2</span><span class="t-out">%</span></div>
+        <div><span class="t-key">forecast</span><span class="t-out">:</span></div>
+        <div><span class="t-out">  Oct </span><span class="t-num">$1,842,300</span>  <span class="t-out">[</span><span class="t-num">1,710k</span><span class="t-out"> – </span><span class="t-num">1,974k</span><span class="t-out">]</span></div>
+        <div><span class="t-out">  Nov </span><span class="t-num">$2,014,600</span>  <span class="t-out">[</span><span class="t-num">1,870k</span><span class="t-out"> – </span><span class="t-num">2,159k</span><span class="t-out">]</span></div>
+        <div><span class="t-out">  Dec </span><span class="t-num">$2,387,900</span>  <span class="t-out">[</span><span class="t-num">2,190k</span><span class="t-out"> – </span><span class="t-num">2,585k</span><span class="t-out">]</span></div>
+        <div><span class="t-warn">⚑  anomaly detected Nov-2025 (+2.4σ)</span></div>
+        <div>&nbsp;</div>
+        <div><span class="t-dim">$ </span><span class="cursor"></span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── Stats bar ─────────────────────────────────────────────────────────── -->
+<div class="stats-bar">
+  <div class="container">
+    <div class="stats-grid">
+      <div class="stat-item reveal">
+        <div class="stat-num">11+</div>
+        <div class="stat-label">MCP Tools</div>
+      </div>
+      <div class="stat-item reveal">
+        <div class="stat-num">50+</div>
+        <div class="stat-label">Test Cases</div>
+      </div>
+      <div class="stat-item reveal">
+        <div class="stat-num">3</div>
+        <div class="stat-label">Execution Modes</div>
+      </div>
+      <div class="stat-item reveal">
+        <div class="stat-num">24h</div>
+        <div class="stat-label">Max Forecast Horizon</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── Features ─────────────────────────────────────────────────────────── -->
+<section id="features">
+  <div class="container">
+    <div class="reveal">
+      <p class="section-label">Capabilities</p>
+      <h2 class="section-title">Everything you need for<br />sales data intelligence</h2>
+      <p class="section-sub">From raw SQL to boardroom-ready narratives — deterministic by default, LLM-augmented when it matters.</p>
+    </div>
+
+    <div class="features-grid">
+
+      <div class="feature-card reveal" style="--accent-color: var(--blue);">
+        <div class="feature-icon" style="background:rgba(79,142,255,0.12);">📈</div>
+        <h3 class="feature-title">KPI Analytics</h3>
+        <p class="feature-desc">Monthly and quarterly summaries covering net revenue, gross margin, units sold, and ASP. Regional leaderboards with channel context and product ranking by margin.</p>
+      </div>
+
+      <div class="feature-card reveal" style="--accent-color: var(--purple);">
+        <div class="feature-icon" style="background:rgba(139,92,246,0.12);">🔮</div>
+        <h3 class="feature-title">Multi-Horizon Forecasting</h3>
+        <p class="feature-desc">Auto-selects the best model (ARIMA, ETS, moving average) per metric. Supports up to 24 periods with confidence intervals, MAPE/SMAPE diagnostics, and residual analysis.</p>
+      </div>
+
+      <div class="feature-card reveal" style="--accent-color: var(--red);">
+        <div class="feature-icon" style="background:rgba(244,96,96,0.12);">🚨</div>
+        <h3 class="feature-title">Anomaly Detection</h3>
+        <p class="feature-desc">Statistical baselines with configurable sigma thresholds. Detects point anomalies and contextual shifts across any numeric metric with full trace artifacts.</p>
+      </div>
+
+      <div class="feature-card reveal" style="--accent-color: var(--cyan);">
+        <div class="feature-icon" style="background:rgba(0,212,232,0.10);">📊</div>
+        <h3 class="feature-title">Chart Generation</h3>
+        <p class="feature-desc">Thread-safe Matplotlib/Seaborn charts output as PNG or SVG. Covers KPI trends, regional bar charts, product margin plots, and forecast visualizations with CI bands.</p>
+      </div>
+
+      <div class="feature-card reveal" style="--accent-color: var(--green);">
+        <div class="feature-icon" style="background:rgba(34,211,160,0.10);">🧩</div>
+        <h3 class="feature-title">BI Spec Generation</h3>
+        <p class="feature-desc">Generates structured JSON specs for dashboard tools and narrative storyboards. Export analytics packages in CSV or Parquet with semantic KPI metadata.</p>
+      </div>
+
+      <div class="feature-card reveal" style="--accent-color: var(--gold);">
+        <div class="feature-icon" style="background:rgba(244,185,66,0.10);">🔒</div>
+        <h3 class="feature-title">Security-First Design</h3>
+        <p class="feature-desc">Three auth profiles (DEV_OPEN → PROD_STRICT), read-only SQL enforcement with allowlist validation, token-based RBAC, rate limiting, and XSS sanitization — no external auth deps.</p>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ─── Architecture ──────────────────────────────────────────────────────── -->
+<section id="architecture">
+  <div class="container">
+    <div class="reveal">
+      <p class="section-label">Architecture</p>
+      <h2 class="section-title">Built in layers,<br />auditable by design</h2>
+      <p class="section-sub">Deterministic core with clean separation between interface, orchestration, analytics, and storage.</p>
+    </div>
+
+    <div class="arch-diagram reveal">
+      <div class="arch-layers">
+
+        <div class="arch-layer">
+          <div class="arch-layer-label">Interface Layer</div>
+          <div class="arch-nodes">
+            <span class="arch-node blue">MCP Server</span>
+            <span class="arch-node blue">FastAPI Web</span>
+            <span class="arch-node blue">CLI (ask_agent.py)</span>
+            <span class="arch-node blue">HTML Chat UI</span>
+          </div>
+        </div>
+
+        <div class="arch-arrow">↓</div>
+
+        <div class="arch-layer">
+          <div class="arch-layer-label">Orchestration Layer</div>
+          <div class="arch-nodes">
+            <span class="arch-node purple">Agent (agent.py)</span>
+            <span class="arch-node purple">Tool Registry</span>
+            <span class="arch-node purple">LLM Client (optional)</span>
+            <span class="arch-node purple">Memory Store</span>
+          </div>
+        </div>
+
+        <div class="arch-arrow">↓</div>
+
+        <div class="arch-layer">
+          <div class="arch-layer-label">Analytics & Auth</div>
+          <div class="arch-nodes">
+            <span class="arch-node cyan">analytics.py</span>
+            <span class="arch-node cyan">visualization.py</span>
+            <span class="arch-node cyan">specs.py</span>
+            <span class="arch-node gold">auth.py</span>
+            <span class="arch-node gold">sql_policy.py</span>
+            <span class="arch-node gold">rate limiter</span>
+          </div>
+        </div>
+
+        <div class="arch-arrow">↓</div>
+
+        <div class="arch-layer">
+          <div class="arch-layer-label">Data Layer</div>
+          <div class="arch-nodes">
+            <span class="arch-node green">SQLite + SQLAlchemy</span>
+            <span class="arch-node green">dim_product / dim_region</span>
+            <span class="arch-node green">fact_sales</span>
+            <span class="arch-node green">Analytical Views</span>
+          </div>
+        </div>
+
+        <div class="arch-arrow">↓</div>
+
+        <div class="arch-layer">
+          <div class="arch-layer-label">Artifact Outputs</div>
+          <div class="arch-nodes">
+            <span class="arch-node dim">Charts (PNG/SVG)</span>
+            <span class="arch-node dim">Analytics Exports (CSV/Parquet)</span>
+            <span class="arch-node dim">BI Specs (JSON)</span>
+            <span class="arch-node dim">Agent Traces</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── Modes ─────────────────────────────────────────────────────────────── -->
+<section id="modes">
+  <div class="container">
+    <div class="reveal">
+      <p class="section-label">Execution Modes</p>
+      <h2 class="section-title">The right engine<br />for every query</h2>
+      <p class="section-sub">Choose speed, intelligence, or let OrionPulse decide automatically.</p>
+    </div>
+
+    <div class="modes-grid">
+
+      <div class="mode-card reveal" style="--accent-color: var(--green);">
+        <span class="mode-badge" style="background:rgba(34,211,160,0.12);color:#22d3a0;">Deterministic</span>
+        <h3 class="mode-title">Fast &amp; Auditable</h3>
+        <p class="mode-desc">SQL-only execution. No LLM calls. Returns in milliseconds with full trace IDs and reproducible results. The default for CLI usage.</p>
+        <div class="mode-pills">
+          <span class="pill">No API key needed</span>
+          <span class="pill">&lt;50ms latency</span>
+          <span class="pill">100% reproducible</span>
+        </div>
+      </div>
+
+      <div class="mode-card reveal" style="--accent-color: var(--purple);">
+        <span class="mode-badge" style="background:rgba(139,92,246,0.12);color:#a78bfa;">LLM-Orchestrated</span>
+        <h3 class="mode-title">Rich Reasoning</h3>
+        <p class="mode-desc">Claude or any OpenAI-compatible model drives multi-step tool calls. Generates narrative summaries, business recommendations, and follow-up insights.</p>
+        <div class="mode-pills">
+          <span class="pill">Narrative output</span>
+          <span class="pill">Multi-step planning</span>
+          <span class="pill">MCP tool calls</span>
+        </div>
+      </div>
+
+      <div class="mode-card reveal" style="--accent-color: var(--blue);">
+        <span class="mode-badge" style="background:rgba(79,142,255,0.12);color:#7aacff;">Auto</span>
+        <h3 class="mode-title">Adaptive Hybrid</h3>
+        <p class="mode-desc">Deterministic path runs first. If confidence is below threshold, falls back to LLM orchestration automatically. Default for the Web API.</p>
+        <div class="mode-pills">
+          <span class="pill">Best of both worlds</span>
+          <span class="pill">Confidence-gated</span>
+          <span class="pill">Web default</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ─── MCP Tools ─────────────────────────────────────────────────────────── -->
+<section id="mcp-tools">
+  <div class="container">
+    <div class="reveal">
+      <p class="section-label">Model Context Protocol</p>
+      <h2 class="section-title">11 tools, ready for<br />any LLM to call</h2>
+      <p class="section-sub">Every analytical capability is exposed as a typed MCP tool — composable, safe, and schema-documented.</p>
+    </div>
+
+    <div class="tools-grid">
+
+      <div class="tool-row reveal">
+        <span class="tool-name">list_tables()</span>
+        <span class="tool-desc">Discover all available tables and analytical views in the database.</span>
+      </div>
+
+      <div class="tool-row reveal">
+        <span class="tool-name">describe_table()</span>
+        <span class="tool-desc">Return full schema metadata for any table or view.</span>
+      </div>
+
+      <div class="tool-row reveal">
+        <span class="tool-name">run_sql()</span>
+        <span class="tool-desc">Execute validated, read-only SQL with row limits and injection protection.</span>
+      </div>
+
+      <div class="tool-row reveal">
+        <span class="tool-name">kpi_summary()</span>
+        <span class="tool-desc">Monthly or quarterly KPI summaries: revenue, margin, units, ASP.</span>
+      </div>
+
+      <div class="tool-row reveal">
+        <span class="tool-name">forecast_metric()</span>
+        <span class="tool-desc">Time-series forecast with auto model selection and confidence intervals.</span>
+      </div>
+
+      <div class="tool-row reveal">
+        <span class="tool-name">anomaly_detection()</span>
+        <span class="tool-desc">Statistical anomaly detection with configurable sigma thresholds.</span>
+      </div>
+
+      <div class="tool-row reveal">
+        <span class="tool-name">dashboard_spec()</span>
+        <span class="tool-desc">Generate a structured JSON dashboard specification for BI tools.</span>
+      </div>
+
+      <div class="tool-row reveal">
+        <span class="tool-name">storyboard_spec()</span>
+        <span class="tool-desc">Produce a narrative-driven analytics storyboard in structured JSON.</span>
+      </div>
+
+      <div class="tool-row reveal">
+        <span class="tool-name">create_sql_view()</span>
+        <span class="tool-desc">Admin-only: persist a named analytical view to the database.</span>
+      </div>
+
+      <div class="tool-row reveal">
+        <span class="tool-name">generate_chart()</span>
+        <span class="tool-desc">Render KPI, regional, margin, or forecast charts as PNG or SVG.</span>
+      </div>
+
+      <div class="tool-row reveal">
+        <span class="tool-name">export_analytics()</span>
+        <span class="tool-desc">Package query results as CSV or Parquet with KPI metadata.</span>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ─── Quickstart ────────────────────────────────────────────────────────── -->
+<section id="quickstart">
+  <div class="container">
+    <div class="reveal">
+      <p class="section-label">Quickstart</p>
+      <h2 class="section-title">Up and running<br />in under 2 minutes</h2>
+    </div>
+
+    <div class="code-section">
+
+      <div class="code-card reveal">
+        <div class="code-header">
+          <span class="code-title">Install &amp; seed database</span>
+          <span class="code-lang">bash</span>
+        </div>
+        <pre><span class="c"># Clone the repo</span>
+<span class="f">git</span> <span class="n">clone</span> <span class="s">https://github.com/surpradhan/orionpulse-data-agent</span>
+<span class="f">cd</span> <span class="s">orionpulse-data-agent</span>
+
+<span class="c"># Create virtual environment</span>
+<span class="f">python</span> <span class="k">-m</span> venv <span class="n">.venv</span> <span class="k">&&</span> <span class="f">source</span> <span class="n">.venv/bin/activate</span>
+
+<span class="c"># Install dependencies</span>
+<span class="f">pip</span> install <span class="k">-r</span> requirements.txt
+
+<span class="c"># Seed SQLite database</span>
+<span class="f">python</span> <span class="n">data/init_db.py</span>
+
+<span class="c"># Run preflight checks</span>
+<span class="f">python</span> <span class="n">scripts/preflight.py</span></pre>
+      </div>
+
+      <div class="code-card reveal">
+        <div class="code-header">
+          <span class="code-title">Start the web server</span>
+          <span class="code-lang">bash</span>
+        </div>
+        <pre><span class="c"># Configure environment</span>
+<span class="f">cp</span> <span class="n">.env.example .env</span>
+<span class="c"># edit .env → set AUTH_PROFILE, optional OPENAI_API_KEY</span>
+
+<span class="c"># Launch FastAPI server</span>
+<span class="f">uvicorn</span> <span class="n">src.orion_sales_agent.webapp:app</span> \
+  <span class="k">--reload</span> <span class="k">--port</span> <span class="v">8000</span>
+
+<span class="c"># Chat via CLI</span>
+<span class="f">python</span> <span class="n">scripts/ask_agent.py</span> \
+  <span class="k">--mode</span> <span class="s">auto</span> \
+  <span class="k">--question</span> <span class="s">"What were the top 3 regions by margin last quarter?"</span>
+
+<span class="c"># Or launch MCP server for Claude Desktop</span>
+<span class="f">python</span> <span class="n">-m</span> mcp_server.server</pre>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ─── Tech stack ────────────────────────────────────────────────────────── -->
+<section id="tech">
+  <div class="container">
+    <div class="reveal">
+      <p class="section-label">Technology</p>
+      <h2 class="section-title">A lean, focused stack</h2>
+      <p class="section-sub">No unnecessary abstractions. Every dependency earns its place.</p>
+    </div>
+
+    <div class="tech-grid">
+
+      <div class="tech-card reveal">
+        <div class="tech-name" style="color:#4f8eff;">Python 3.11+</div>
+        <div class="tech-role">Core runtime</div>
+      </div>
+
+      <div class="tech-card reveal">
+        <div class="tech-name" style="color:#22d3a0;">FastAPI</div>
+        <div class="tech-role">Web API &amp; HTML UI</div>
+      </div>
+
+      <div class="tech-card reveal">
+        <div class="tech-name" style="color:#8b5cf6;">MCP (FastMCP)</div>
+        <div class="tech-role">LLM tool protocol</div>
+      </div>
+
+      <div class="tech-card reveal">
+        <div class="tech-name" style="color:#f4b942;">SQLite</div>
+        <div class="tech-role">Relational data store</div>
+      </div>
+
+      <div class="tech-card reveal">
+        <div class="tech-name" style="color:#4f8eff;">Pandas + NumPy</div>
+        <div class="tech-role">Data manipulation</div>
+      </div>
+
+      <div class="tech-card reveal">
+        <div class="tech-name" style="color:#22d3a0;">Statsmodels</div>
+        <div class="tech-role">Forecasting &amp; stats</div>
+      </div>
+
+      <div class="tech-card reveal">
+        <div class="tech-name" style="color:#8b5cf6;">Matplotlib + Seaborn</div>
+        <div class="tech-role">Chart generation</div>
+      </div>
+
+      <div class="tech-card reveal">
+        <div class="tech-name" style="color:#f4b942;">Ruff + Black + MyPy</div>
+        <div class="tech-role">Code quality</div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ─── CTA ───────────────────────────────────────────────────────────────── -->
+<section id="cta">
+  <div class="cta-glow"></div>
+  <div class="container">
+    <h2 class="cta-title reveal">Ready to query<br /><span style="background:linear-gradient(135deg,var(--blue),var(--cyan),var(--purple));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">your sales data?</span></h2>
+    <p class="cta-sub reveal">Clone the repo, seed the database, and ask your first question in under 2 minutes.</p>
+    <div class="hero-actions reveal">
+      <a href="https://github.com/surpradhan/orionpulse-data-agent" class="btn btn-primary btn-lg">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.44 9.8 8.21 11.39.6.11.82-.26.82-.58v-2.03c-3.34.73-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.09-.75.08-.73.08-.73 1.2.08 1.84 1.24 1.84 1.24 1.07 1.83 2.81 1.3 3.5.99.11-.78.42-1.3.76-1.6-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.12-.3-.54-1.52.12-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 013-.4c1.02 0 2.04.13 3 .4 2.28-1.55 3.29-1.23 3.29-1.23.66 1.66.24 2.88.12 3.18.77.84 1.24 1.91 1.24 3.22 0 4.61-2.81 5.63-5.48 5.92.43.37.81 1.1.81 2.22v3.29c0 .32.21.7.82.58C20.56 21.8 24 17.3 24 12c0-6.63-5.37-12-12-12z"/></svg>
+        View on GitHub
+      </a>
+      <a href="https://github.com/surpradhan/orionpulse-data-agent/blob/main/README.md" class="btn btn-ghost btn-lg">
+        Read the Docs
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ─── Footer ────────────────────────────────────────────────────────────── -->
+<footer>
+  <div class="container">
+    <div class="footer-inner">
+      <span class="footer-copy">© 2026 OrionPulse. MIT License.</span>
+      <div class="footer-links">
+        <a href="https://github.com/surpradhan/orionpulse-data-agent">GitHub</a>
+        <a href="https://github.com/surpradhan/orionpulse-data-agent/blob/main/README.md">Docs</a>
+        <a href="https://github.com/surpradhan/orionpulse-data-agent/blob/main/SECURITY.md">Security</a>
+        <a href="https://github.com/surpradhan/orionpulse-data-agent/blob/main/CONTRIBUTING.md">Contributing</a>
+        <a href="https://github.com/surpradhan/orionpulse-data-agent/blob/main/LICENSE">License</a>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<!-- ─── Scripts ───────────────────────────────────────────────────────────── -->
+<script>
+/* ── Starfield ─────────────────────────────────────────────────────────── */
+(function () {
+  const canvas = document.getElementById('starfield');
+  const ctx    = canvas.getContext('2d');
+  let W, H, stars;
+
+  const STAR_COUNT = 180;
+  const TWINKLE_SPEED = 0.008;
+
+  function resize() {
+    W = canvas.width  = window.innerWidth;
+    H = canvas.height = window.innerHeight;
+    build();
+  }
+
+  function build() {
+    stars = Array.from({ length: STAR_COUNT }, () => ({
+      x: Math.random() * W,
+      y: Math.random() * H,
+      r: Math.random() * 1.4 + 0.2,
+      phase: Math.random() * Math.PI * 2,
+      speed: (Math.random() * 0.5 + 0.3) * TWINKLE_SPEED,
+      color: Math.random() > 0.85 ? '#8b8fff' : '#ffffff',
+    }));
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+    const t = performance.now() * 0.001;
+    for (const s of stars) {
+      const alpha = 0.15 + 0.45 * (0.5 + 0.5 * Math.sin(t * s.speed * 60 + s.phase));
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+      ctx.fillStyle = s.color;
+      ctx.globalAlpha = alpha;
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    requestAnimationFrame(draw);
+  }
+
+  window.addEventListener('resize', resize);
+  resize();
+  draw();
+})();
+
+/* ── Scroll reveal ──────────────────────────────────────────────────────── */
+(function () {
+  const els = document.querySelectorAll('.reveal');
+  const io  = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        e.target.classList.add('visible');
+        io.unobserve(e.target);
+      }
+    });
+  }, { threshold: 0.12 });
+  els.forEach(el => io.observe(el));
+})();
+
+/* ── Typing effect for terminal ─────────────────────────────────────────── */
+(function () {
+  // Already static for fast rendering; cursor blink is CSS-driven.
+})();
+</script>
+
+</body>
+</html>
