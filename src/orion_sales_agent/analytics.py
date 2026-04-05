@@ -33,29 +33,9 @@ def _fit_ets(model: ExponentialSmoothing) -> Any:
     level so the information is not silently discarded.
     """
     with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")  # catch all categories, filter below
-        fit = model.fit(optimized=True)
-    if any(issubclass(w.category, ConvergenceWarning) for w in caught):
-        logging.getLogger(__name__).debug(
-            "ETS optimiser did not fully converge; using best-found parameters."
-        )
-    return fit
-
-
-def _fit_ets(model: ExponentialSmoothing) -> Any:
-    """Fit an ExponentialSmoothing model, suppressing ConvergenceWarning.
-
-    statsmodels raises ConvergenceWarning when the L-BFGS-B optimiser does
-    not fully converge.  The returned fit is still usable (parameters are
-    at the optimiser's best-found point), but pollutes logs and test output.
-    We suppress the warning here rather than at call sites and log at DEBUG
-    level so the information is not silently discarded.
-    """
-    with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always", ConvergenceWarning)
         fit = model.fit(optimized=True)
     if any(issubclass(w.category, ConvergenceWarning) for w in caught):
-        import logging
         logging.getLogger(__name__).debug(
             "ETS optimiser did not fully converge; using best-found parameters."
         )
