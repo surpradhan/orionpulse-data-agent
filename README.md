@@ -1,163 +1,168 @@
-# OrionPulse Data Agent (MCP + SQLite + FastAPI)
+# OrionPulse Data Agent
 
-OrionPulse is a sales analytics agent that combines deterministic data tooling with optional LLM orchestration.
+Sales analytics agent built on SQLite + FastAPI. Deterministic-first with optional LLM orchestration — every question has a fast, predictable answer even without an API key.
 
-It supports:
-- Sales KPI analysis over a curated SQLite model
-- Forecasting and anomaly detection
-- Dashboard/storyboard spec generation
-- Analytics export package generation for BI tools
-- MCP tool access, CLI usage, and a WEB UI/API
+---
 
-## Core capabilities
+## Architecture
 
-- Data model: `dim_product`, `dim_region`, `fact_sales`
-- MCP tools: metadata, readonly SQL, KPI summary, forecast, anomaly, view creation (admin-gated), spec generation
-- Agent orchestration modes: deterministic, llm, auto (with safe fallback)
-- Web API: standardized envelope + execution provenance fields
-- Voice-enabled UI: browser speech-to-text and text-to-speech controls
+```mermaid
+flowchart LR
+    subgraph Channels
+        CLI["🖥  CLI"]
+        WEB["🌐  Web / API"]
+        MCP["🔌  MCP Server"]
+    end
 
-## Quick start
+    subgraph Agent["OrionAgent  •  answer(mode)"]
+        direction TB
+        INT["Intent Classifier\nforecast · anomaly · compare\nkpi · root_cause · region"]
+        DET["Deterministic Router\nSQL + analytics"]
+        LLM["LLM Path\nPlanner → Tool → Critic → Synth"]
+        INT --> DET
+        INT -->|"auto / llm"| LLM
+        LLM -. fallback .-> DET
+    end
 
-1) Create and activate environment (requires Python 3.11+)
+    subgraph Analytics["Analytics Layer"]
+        KPI["KPI Summary"]
+        FC["Forecasting\nHolt-Winters ETS\n+ backtest RMSE"]
+        AD["Anomaly Detection\nz-score"]
+        CMP["Period Comparison\nQ1 vs Q2 · 2024 vs 2025"]
+    end
+
+    subgraph Data["Data Layer"]
+        DB[("SQLite\nfact_sales\ndim_product · dim_region")]
+        VW["Views\nvw_monthly_sales\nvw_region_performance\nvw_product_margin_rank"]
+    end
+
+    subgraph Out["Outputs"]
+        CH["📊 Charts\nPNG / SVG"]
+        SP["📋 Dashboard &\nStoryboard Specs"]
+        EX["📦 BI Exports\nCSV / Parquet"]
+    end
+
+    CLI & WEB & MCP --> Agent
+    Agent --> Analytics
+    Analytics --> Data
+    Analytics --> Out
+```
+
+---
+
+## Quickstart
 
 ```bash
-python -m venv .venv
-# macOS / Linux
-source .venv/bin/activate
-# Windows
-.venv\Scripts\activate
+# 1. Install
+python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-```
 
-2) Configure environment variables
-
-```bash
-cp .env.example .env
-# Edit .env — at minimum set ORION_LLM_API_KEY if using LLM mode
-```
-
-3) Initialize data
-
-```bash
+# 2. Seed database
 python data/init_db.py
+
+# 3. Run
+python mcp_server/server.py                                        # MCP
+python -m uvicorn src.orion_sales_agent.webapp:app --reload        # Web UI → http://localhost:8000
 ```
 
-This seeds the schema, all three analytical views, and synthetic sales data in one step.
-To re-apply views only (without re-seeding), see `docs/OPERATIONS_RUNBOOK.md`.
+---
 
-4) Run services
+## CLI
 
 ```bash
-python mcp_server/server.py
-python -m uvicorn src.orion_sales_agent.webapp:app --reload
+# Basic query (deterministic, no LLM needed)
+python scripts/ask_agent.py --question "forecast next 3 months revenue" --format json
+
+# Auto mode — uses LLM if configured, falls back gracefully
+python scripts/ask_agent.py --question "why did margin drop in APAC" --mode auto
+
+# Period comparison (new)
+python scripts/ask_agent.py --question "compare Q1 vs Q2 revenue and margin"
+
+# With charts
+python scripts/ask_agent.py --question "show performance" --with-charts --format json
+
+# Trace LLM planner steps live (prints to stderr)
+python scripts/ask_agent.py --question "..." --mode llm --trace
+
+# Reset conversation memory
+python scripts/ask_agent.py --reset-memory
 ```
 
-5) Try CLI
+---
+
+## LLM (optional)
+
+The agent works fully without an LLM. To enable richer multi-step reasoning:
 
 ```bash
-python scripts/ask_agent.py --question "forecast next months revenue" --format json
-python scripts/ask_agent.py --question "why did margin drop" --mode auto --format json
-python scripts/ask_agent.py --question "show performance with charts" --with-charts --format json
-python scripts/ask_agent.py --question "prepare analytics exports" --with-analytics-exports --format json
-```
-
-## Interaction channels and mode policy
-
-- MCP: deterministic contract behavior by default
-- Web/API: default `auto` (configurable via `ORION_WEB_DEFAULT_MODE`)
-- CLI: default `deterministic` (configurable via `ORION_CLI_DEFAULT_MODE`)
-
-See:
-- `docs/ENGINEERING_EXECUTION_MODE_POLICY.md`
-- `docs/INTERACTION_MODES.md`
-
-## LLM orchestration (optional)
-
-Configure:
-
-```bash
-ORION_LLM_API_KEY=your_key_here
+# OpenAI
+ORION_LLM_API_KEY=sk-...
 ORION_LLM_BASE_URL=https://api.openai.com/v1
 ORION_LLM_MODEL=gpt-4o-mini
-ORION_LLM_MAX_STEPS=4
+
+# Ollama (free, local)
+ORION_LLM_BASE_URL=http://localhost:11434/v1
+ORION_LLM_MODEL=llama3.2
+ORION_LLM_API_KEY=ollama
 ```
 
-If unavailable or failing, the agent falls back to deterministic logic.
+`ORION_WEB_DEFAULT_MODE=auto` — tries LLM, falls back to deterministic with `fallback_reason` in the response.
 
-## API response contract
+---
 
-Core JSON endpoints use:
+## API response shape
 
 ```json
 {
   "status": "ok",
-  "trace_id": "orion-...",
-  "timestamp": "2026-...Z",
+  "trace_id": "orion-a3f9c1...",
+  "timestamp": "2026-04-05T10:00:00Z",
   "warnings": [],
-  "data": {}
+  "execution_mode": "deterministic | llm_orchestrated | fallback_rule_based",
+  "fallback_reason": null,
+  "data": { ... }
 }
 ```
 
-Also includes provenance:
-- `execution_mode`: `deterministic` | `llm_orchestrated` | `fallback_rule_based`
-- `fallback_reason` (optional)
+Endpoints: `/chat` `/kpi` `/forecast` `/ask` `/ask_with_visuals` `/ask_with_analytics_exports` (+ `/v1/` aliases)
+Admin: `DELETE /memory` — clears conversation memory
 
-Routes:
-- Primary: `/chat`, `/kpi`, `/forecast`, `/ask`, `/ask_with_visuals`, `/ask_with_analytics_exports`
-- Versioned aliases: `/v1/...` for the same endpoints
+---
 
-## Auth and security posture
+## Auth
 
-Key variables:
-- `ORION_ENV`
-- `ORION_AUTH_REQUIRED`
-- `ORION_AUTH_PROFILE` (`DEV_OPEN`, `DEV_GUARDED`, `PROD_STRICT`)
-- `ORION_ANALYST_TOKEN`
-- `ORION_ADMIN_TOKEN`
+Three profiles via `ORION_AUTH_PROFILE`: `DEV_OPEN` · `DEV_GUARDED` · `PROD_STRICT`
+Pass tokens as `X-Orion-Token: <value>`. Startup hard-fails if tokens are missing in non-dev environments.
 
-When auth is required and tokens are missing, startup fails fast.
+---
 
-Safety highlights:
-- SQL constrained to single-statement readonly `SELECT`/`WITH`
-- Allowlist validation for queryable objects
-- SQL row limits bounded by config
-- Admin-only operations gated and policy-checked (admin auth checked before any data processing)
-- LLM output sanitized to strip HTML/script tags before leaving the agent layer
-- Metric identifiers in analytics SQL use a lookup dict, not direct interpolation
+## Key modules
+
+| Module | Purpose |
+|--------|---------|
+| `agent.py` | Orchestration — intent routing, LLM loop, memory, fallback |
+| `analytics.py` | KPI summary, anomaly detection |
+| `forecasting.py` | Holt-Winters ETS, holdout backtest, model selection |
+| `rate_limiter.py` | Token-bucket rate limiter (stdlib only) |
+| `sql_policy.py` | 3-layer SQL safety: statement · keyword · SQLite EXPLAIN |
+| `webapp.py` | FastAPI routes, auth, response envelope |
+| `mcp_server/server.py` | 11 MCP tools over the same analytics layer |
+| `skills/*.md` | Business context loaded into LLM prompts at startup |
+
+---
+
+## Demo notebook
+
+`notebooks/orionpulse_demo.ipynb` — end-to-end walkthrough: seed → KPI → forecast → anomaly → period comparison → LLM trace → memory reset → spec generation.
+
+---
 
 ## Validation
 
 ```bash
 python scripts/preflight.py
-pytest
+pytest                        # 124 tests
 ```
 
-## Documentation map
-
-| Topic | Document |
-|-------|----------|
-| Architecture and strategy | `docs/MASTER_PLAN.md` |
-| Implementation roadmap | `docs/IMPLEMENTATION_ROADMAP.md` |
-| Data model and KPIs | `docs/DATA_MODEL_AND_KPIS.md` |
-| **API endpoint reference** | `docs/API_REFERENCE.md` |
-| Interaction modes (MCP / CLI / Web) | `docs/INTERACTION_MODES.md` |
-| Execution mode policy | `docs/ENGINEERING_EXECUTION_MODE_POLICY.md` |
-| Auth profiles and security | `SECURITY.md` |
-| Ops runbook | `docs/OPERATIONS_RUNBOOK.md` |
-| Channel error semantics | `docs/CHANNEL_ERROR_CONTRACTS.md` |
-| MCP response contract decision | `docs/MCP_RESPONSE_CONTRACT_DECISION.md` |
-| Analytics exports | `docs/ANALYTICS_EXPORT_GUIDE.md` |
-| **Visualization and charts** | `docs/VISUALIZATION_GUIDE.md` |
-| **Forecast methodology** | `docs/FORECAST_METHODOLOGY.md` |
-| Full doc index and governance | `docs/INDEX.md` |
-
-## Project layout
-
-- `src/orion_sales_agent/` core package
-- `mcp_server/` MCP server entrypoint
-- `data/` DB initialization and seed utilities
-- `sql/` schema and views
-- `skills/` business reasoning knowledge files
-- `specs/` generated dashboard/storyboard/analytics spec files
-- `docs/` architecture, policy, and operational guidance
+Full docs in `docs/` · Security policy in `SECURITY.md`
