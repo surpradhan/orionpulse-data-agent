@@ -1,6 +1,7 @@
 """Analytics primitives for KPI summaries, forecasting, and anomaly detection."""
 from __future__ import annotations
 
+import logging
 import warnings
 from dataclasses import asdict, dataclass
 from math import sqrt
@@ -23,10 +24,9 @@ def _fit_ets(model: ExponentialSmoothing) -> Any:
     level so the information is not silently discarded.
     """
     with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always", ConvergenceWarning)
+        warnings.simplefilter("always")  # catch all categories, filter below
         fit = model.fit(optimized=True)
     if any(issubclass(w.category, ConvergenceWarning) for w in caught):
-        import logging
         logging.getLogger(__name__).debug(
             "ETS optimiser did not fully converge; using best-found parameters."
         )

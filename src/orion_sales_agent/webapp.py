@@ -73,7 +73,9 @@ def _client_ip(request: Request) -> str:
     real_ip = request.headers.get("x-real-ip")
     if real_ip:
         return real_ip.strip()
-    return request.client.host if request.client else "unknown"
+    # Fallback: assign a per-request unique ID so anonymous connections do not
+    # share a rate-limit bucket (which would cause false 429s for unrelated callers).
+    return request.client.host if request.client else f"anon-{uuid4().hex[:12]}"
 
 
 def _check_rate_limit(client_ip: str) -> None:
@@ -184,8 +186,10 @@ def home() -> str:
 def health() -> dict:
     """Liveness probe — returns service version and uptime timestamp.
 
-    No authentication required so load-balancers and container orchestrators
-    can call it freely.
+    No authentication or rate limiting applied: load-balancers and container
+    orchestrators must be able to poll this endpoint freely without tokens or
+    backoff.  The endpoint is intentionally read-only and stateless (no DB
+    writes, no agent invocation) so the DoS surface is minimal.
     """
     return {
         "status": "ok",
@@ -242,7 +246,7 @@ def chat(
     request: Request,
     x_orion_token: str | None = Header(default=None),
 ) -> dict:
-    _check_rate_limit(request.client.host if request.client else "unknown")
+    _check_rate_limit(_client_ip(request))
     return _chat_impl(payload, x_orion_token)
 
 
@@ -252,7 +256,7 @@ def chat_v1(
     request: Request,
     x_orion_token: str | None = Header(default=None),
 ) -> dict:
-    _check_rate_limit(request.client.host if request.client else "unknown")
+    _check_rate_limit(_client_ip(request))
     return _chat_impl(payload, x_orion_token)
 
 

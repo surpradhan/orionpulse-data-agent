@@ -15,23 +15,8 @@ def _open_access(monkeypatch) -> None:
     monkeypatch.setattr(settings, "admin_token", "")
 
 
-def _clear_rate_bucket(ip: str = "testclient") -> None:
-    """Remove any accumulated rate-limit timestamps for *ip* before a load test.
-
-    GET endpoints are now rate-limited (30 req/60 s per IP).  Load tests fire
-    many requests in rapid succession and must start with a clean slate so that
-    timestamps left in the shared _rate_buckets dict by earlier tests (which
-    use the same synthetic 'testclient' IP) do not cause spurious 429s.
-    """
-    from src.orion_sales_agent.webapp import _rate_buckets, _rate_lock
-
-    with _rate_lock:
-        _rate_buckets.pop(ip, None)
-
-
 def test_forecast_burst_concurrency(monkeypatch) -> None:
     _open_access(monkeypatch)
-    _clear_rate_bucket()
     client = TestClient(app)
 
     def one_call() -> float:
@@ -52,7 +37,6 @@ def test_forecast_burst_concurrency(monkeypatch) -> None:
 
 def test_kpi_sustained_load(monkeypatch) -> None:
     _open_access(monkeypatch)
-    _clear_rate_bucket()
     client = TestClient(app)
 
     start = time.perf_counter()
