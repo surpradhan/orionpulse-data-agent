@@ -5,6 +5,7 @@ standardization, and a lightweight built-in HTML chat UI.
 """
 from __future__ import annotations
 
+import itertools
 import threading
 import time
 from collections import deque
@@ -42,10 +43,13 @@ _RATE_LIMIT_WINDOW_SECONDS: float = 60.0
 _rate_buckets: dict[str, deque] = {}
 _rate_lock = threading.Lock()
 
-# How often (in requests) to sweep _rate_buckets for fully-drained entries.
+# How often (in requests) to sweep _rate_buckets for already-drained entries.
 # Prevents unbounded memory growth when many unique IPs are seen over time.
 _RATE_BUCKET_SWEEP_INTERVAL: int = 500
-_rate_request_counter: int = 0
+# itertools.count() is a mutable object; no global/reassignment needed and
+# next() on it is thread-safe under the GIL.  We still call it inside
+# _rate_lock so the modulo check and the bucket ops are one atomic block.
+_rate_request_counter = itertools.count(start=1)
 
 
 def _client_ip(request: Request) -> str:
@@ -54,6 +58,14 @@ def _client_ip(request: Request) -> str:
     Checks ``X-Forwarded-For`` (first entry) then ``X-Real-IP`` before
     falling back to the direct connection address.  This ensures the rate
     limiter works correctly behind nginx, CloudFront, or any load balancer.
+
+    Security note: ``X-Forwarded-For`` is a client-controlled header and can
+    be spoofed by any caller who connects directly (i.e. not via a trusted
+    proxy).  In a production deployment, restrict trust to requests that
+    arrive from known proxy IP ranges or configure your load-balancer to
+    strip/overwrite the header before it reaches the application.  Without a
+    trusted-proxy allowlist, a caller can forge this header to bypass the
+    per-IP rate limiter.
     """
     forwarded_for = request.headers.get("x-forwarded-for")
     if forwarded_for:
@@ -68,10 +80,11 @@ def _check_rate_limit(client_ip: str) -> None:
     """Raise HTTP 429 if *client_ip* exceeds the request rate limit.
 
     Thread-safe via a module-level lock; does not require any external
-    dependency beyond stdlib.  Periodically sweeps empty buckets to prevent
-    unbounded memory growth when many unique IPs are seen over a long uptime.
+    dependency beyond stdlib.  Periodically sweeps already-drained buckets to
+    prevent unbounded memory growth when many unique IPs are seen over a long
+    uptime.  Buckets that still hold recent timestamps are not evicted here;
+    they drain naturally on each subsequent call for that IP.
     """
-    global _rate_request_counter
     now = time.monotonic()
     cutoff = now - _RATE_LIMIT_WINDOW_SECONDS
     with _rate_lock:
@@ -90,10 +103,10 @@ def _check_rate_limit(client_ip: str) -> None:
                 ),
             )
         bucket.append(now)
-        # Periodic sweep: remove buckets whose windows have fully expired so
-        # the dict does not grow without bound across many unique source IPs.
-        _rate_request_counter += 1
-        if _rate_request_counter % _RATE_BUCKET_SWEEP_INTERVAL == 0:
+        # Periodic sweep: remove buckets that have already been fully drained
+        # (all timestamps fell outside the window on previous accesses).
+        # Non-empty buckets are left alone and drain naturally.
+        if next(_rate_request_counter) % _RATE_BUCKET_SWEEP_INTERVAL == 0:
             stale = [ip for ip, b in _rate_buckets.items() if not b]
             for ip in stale:
                 del _rate_buckets[ip]
