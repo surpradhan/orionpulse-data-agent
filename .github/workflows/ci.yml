@@ -31,7 +31,7 @@ jobs:
         run: ruff check .
 
       - name: Type check
-        run: mypy --ignore-missing-imports src/orion_sales_agent/config.py src/orion_sales_agent/analytics.py src/orion_sales_agent/webapp.py
+        run: mypy --ignore-missing-imports src/orion_sales_agent/
 
       - name: Seed database
         run: python data/init_db.py
